@@ -446,10 +446,10 @@ export const ChatInput = ({
             </div>
           )}
 
-          {/* Emoji Picker Button — desktop-first, lazy-loaded */}
+          {/* Emoji Picker Button — lazy-loaded */}
           <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
             <PopoverTrigger asChild>
-              <button className={cn('hidden sm:flex', CTA_BUTTON_CHAT)} aria-label="Insert emoji">
+              <button className={CTA_BUTTON_CHAT} aria-label="Insert emoji">
                 <Smile size={18} className="text-white" />
               </button>
             </PopoverTrigger>
