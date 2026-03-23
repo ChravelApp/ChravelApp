@@ -38,6 +38,8 @@ import { VoiceButton } from './VoiceButton';
 import { useWebSpeechVoice } from '@/hooks/useWebSpeechVoice';
 import { EmojiMartPicker } from './EmojiMartPicker';
 
+const SEND_LOCK_COOLDOWN_MS = 300;
+
 interface ChatInputProps {
   inputMessage: string;
   onInputChange: (message: string) => void;
@@ -94,6 +96,7 @@ export const ChatInput = ({
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sendLockRef = useRef(false); // Ref-based double-tap guard (no re-render needed)
+  const sendLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // @-mention state
   const [showMentionPicker, setShowMentionPicker] = useState(false);
@@ -163,6 +166,14 @@ export const ChatInput = ({
       onTypingChange(hasText);
     }
   }, [inputMessage, onTypingChange]);
+
+  useEffect(() => {
+    return () => {
+      if (sendLockTimerRef.current) {
+        clearTimeout(sendLockTimerRef.current);
+      }
+    };
+  }, []);
 
   // Handle @ mention detection
   const handleInputChange = useCallback(
@@ -281,7 +292,14 @@ export const ChatInput = ({
         // Clear mentioned users after send
         setMentionedUsers([]);
       } finally {
-        sendLockRef.current = false;
+        // Keep a small cooldown to avoid duplicate sends before parent input state clears.
+        if (sendLockTimerRef.current) {
+          clearTimeout(sendLockTimerRef.current);
+        }
+        sendLockTimerRef.current = setTimeout(() => {
+          sendLockRef.current = false;
+          sendLockTimerRef.current = null;
+        }, SEND_LOCK_COOLDOWN_MS);
       }
     }
   };
