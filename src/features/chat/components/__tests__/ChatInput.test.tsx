@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatInput } from '../ChatInput';
 
@@ -115,5 +115,32 @@ describe('ChatInput send behavior', () => {
     await waitFor(() => {
       expect(onSendMessage).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('prevents rapid duplicate submits until cooldown expires', async () => {
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onSendMessage = vi.fn().mockResolvedValue(undefined);
+
+    render(<ChatInput {...baseProps} inputMessage="rapid send" onSendMessage={onSendMessage} />);
+
+    const textbox = screen.getByPlaceholderText('Type @ to mention someone…');
+    const composer = textbox.parentElement;
+    const sendButton = composer?.querySelector('button:last-of-type');
+
+    expect(sendButton).toBeTruthy();
+    await user.click(sendButton as HTMLButtonElement);
+    await user.click(sendButton as HTMLButtonElement);
+
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    await user.click(sendButton as HTMLButtonElement);
+    expect(onSendMessage).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
   });
 });
