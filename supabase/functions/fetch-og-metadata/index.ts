@@ -57,17 +57,41 @@ serve(async req => {
       );
     }
 
-    // Fetch the HTML content
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ChravelBot/1.0; +https://chravel.com)',
-      },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-      // Allow redirects — initial URL is already validated by validateExternalUrlBeforeFetch()
-      // and this edge function runs in Deno Deploy, isolated from internal infra.
-      // redirect: 'error' was blocking legitimate sites that redirect (www, path normalization, CDN).
-      redirect: 'follow',
-    });
+    // Follow redirects manually with per-hop SSRF validation.
+    // Using redirect: 'manual' instead of 'follow' ensures every redirect target
+    // is validated against the SSRF blocklist (private IPs, localhost, link-local).
+    // Using 'error' was too strict — it blocked legitimate redirects (www normalization, CDN routing).
+    const MAX_REDIRECTS = 5;
+    let currentUrl = url;
+    let response!: Response;
+
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      response = await fetch(currentUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; ChravelBot/1.0; +https://chravel.com)',
+        },
+        signal: AbortSignal.timeout(10000),
+        redirect: 'manual',
+      });
+
+      // Not a redirect — done
+      if (response.status < 300 || response.status >= 400) break;
+
+      const location = response.headers.get('location');
+      if (!location) throw new Error('Redirect with no Location header');
+
+      // Resolve relative redirect URLs against current URL
+      currentUrl = new URL(location, currentUrl).toString();
+
+      // SSRF gate: validate every redirect hop against the blocklist
+      if (!(await validateExternalUrlBeforeFetch(currentUrl))) {
+        throw new Error('Redirect target failed SSRF validation');
+      }
+
+      if (hop === MAX_REDIRECTS) {
+        throw new Error('Too many redirects');
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
