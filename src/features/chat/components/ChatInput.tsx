@@ -88,12 +88,12 @@ export const ChatInput = ({
   const [isBroadcastMode, setIsBroadcastMode] = useState(false);
   const [isPaymentMode, setIsPaymentMode] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
-  const [isSendingMessage, setIsSendingMessage] = useState(false); // Send-lock to prevent double submit
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareUrlInput, setShareUrlInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sendLockRef = useRef(false); // Ref-based double-tap guard (no re-render needed)
 
   // @-mention state
   const [showMentionPicker, setShowMentionPicker] = useState(false);
@@ -262,32 +262,26 @@ export const ChatInput = ({
   );
 
   const handleSend = async () => {
-    // Prevent double-submit while request is in-flight
-    if (isSendingMessage) {
-      if (import.meta.env.DEV) {
-        console.warn('[ChatInput] Send blocked - already sending');
-      }
-      return;
-    }
+    // Ref-based guard prevents double-submit without triggering re-renders
+    if (sendLockRef.current) return;
 
     if (!isPaymentMode) {
       // Early validation - don't start send flow if no content
       if (!inputMessage.trim()) return;
 
-      setIsSendingMessage(true);
+      sendLockRef.current = true;
       onTypingChange?.(false);
 
       try {
         // Extract mentioned user IDs
         const mentionedUserIds = mentionedUsers.map(u => u.id);
 
-        onSendMessage(isBroadcastMode, false, undefined, undefined, mentionedUserIds);
+        await onSendMessage(isBroadcastMode, false, undefined, undefined, mentionedUserIds);
 
         // Clear mentioned users after send
         setMentionedUsers([]);
       } finally {
-        // Release send-lock after a short delay to prevent rapid re-clicks
-        setTimeout(() => setIsSendingMessage(false), 300);
+        sendLockRef.current = false;
       }
     }
   };
@@ -567,7 +561,7 @@ export const ChatInput = ({
           {/* Send Button — persistent gold rim; broadcast mode keeps orange gradient */}
           <button
             onClick={handleSend}
-            disabled={(!inputMessage.trim() && !isShareUploading) || isTyping || isSendingMessage}
+            disabled={(!inputMessage.trim() && !isShareUploading) || isTyping}
             className={
               isBroadcastMode
                 ? cn(
@@ -576,7 +570,7 @@ export const ChatInput = ({
                 : CTA_BUTTON_CHAT
             }
           >
-            {isSendingMessage ? (
+            {isTyping ? (
               <Loader2 size={CTA_ICON_SIZE} className="text-white animate-spin" />
             ) : (
               <Send size={CTA_ICON_SIZE} className="text-white" />

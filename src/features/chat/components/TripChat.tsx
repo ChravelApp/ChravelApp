@@ -1047,7 +1047,10 @@ export const TripChat = React.memo(
 
         {/* Persistent Chat Input - Hidden when in Channels mode or user cannot post */}
         {messageFilter !== 'channels' && canPostToChat && (
-          <div className="chat-input-persistent w-full pb-[env(safe-area-inset-bottom)] flex-shrink-0">
+          <div
+            className="chat-input-persistent w-full flex-shrink-0"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
+          >
             <div className="w-full">
               <ChatInput
                 inputMessage={inputMessage}
@@ -1061,6 +1064,7 @@ export const TripChat = React.memo(
                 isPro={isPro}
                 tripId={resolvedTripId}
                 disableFileUpload={!canUploadMedia}
+                safeAreaBottom={false}
                 onTypingChange={isTyping => {
                   if (!demoMode.isDemoMode && typingServiceRef.current) {
                     if (isTyping) {

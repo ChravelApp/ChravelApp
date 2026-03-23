@@ -1840,7 +1840,7 @@ export const AIConciergeChat = ({
     <div className="flex flex-col overflow-hidden flex-1 min-h-0 h-full">
       <div className="rounded-2xl border border-white/10 bg-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] overflow-hidden flex flex-col flex-1">
         {/* Header — search/mic aligned with input bar send button (gradient theme) */}
-        <div className="border-b border-white/10 bg-black/30 p-3 flex-shrink-0">
+        <div className="border-b border-white/10 bg-black/30 px-3 py-2 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -1850,53 +1850,51 @@ export const AIConciergeChat = ({
             >
               <Search size={CTA_ICON_SIZE} className="text-white" />
             </button>
-            <div className="flex-1 flex flex-col items-center min-w-0 gap-1">
+            <div className="flex-1 min-w-0 text-center">
               <h3
-                className="text-lg font-semibold text-white text-center min-w-0 leading-tight"
+                className="text-lg font-semibold text-white text-center truncate leading-tight"
                 data-testid="ai-concierge-header"
               >
                 Concierge AI | Chravel Agent
               </h3>
-              {DUPLEX_VOICE_ENABLED && (
-                <button
-                  type="button"
-                  onClick={handleLiveToggle}
-                  className={`relative min-h-[44px] min-w-[44px] h-8 px-3 rounded-full flex items-center justify-center gap-1 transition-all duration-200 select-none touch-manipulation cta-gold-ring ${
-                    isLiveSessionActive
-                      ? 'bg-gradient-to-br from-[#533517] to-[#c49746] text-white shadow-md shadow-[#c49746]/25 border-transparent'
-                      : 'bg-gray-800/80 text-white hover:bg-gray-700/80'
-                  }`}
-                  aria-label={
-                    isLiveSessionActive ? 'Stop live voice session' : 'Start live voice session'
-                  }
-                  role="switch"
-                  aria-checked={isLiveSessionActive}
-                >
-                  {isLiveSessionActive && (
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute -inset-0.5 rounded-full bg-gradient-to-r from-[#c49746]/30 to-[#feeaa5]/20 blur-sm"
-                    />
-                  )}
-                  <span className="relative z-10 flex items-center gap-1">
-                    <Sparkles size={14} aria-hidden="true" />
-                    <span className="text-xs font-medium leading-none">Live</span>
-                  </span>
-                </button>
-              )}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0 min-w-fit">
+            {DUPLEX_VOICE_ENABLED && (
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                data-testid="header-upload-btn"
-                className={CTA_BUTTON}
-                aria-label="Attach images"
-                title="Attach images"
+                onClick={handleLiveToggle}
+                className={`relative min-h-[44px] min-w-[44px] h-8 px-3 rounded-full flex items-center justify-center gap-1 transition-all duration-200 select-none touch-manipulation cta-gold-ring ${
+                  isLiveSessionActive
+                    ? 'bg-gradient-to-br from-[#533517] to-[#c49746] text-white shadow-md shadow-[#c49746]/25 border-transparent'
+                    : 'bg-gray-800/80 text-white hover:bg-gray-700/80'
+                }`}
+                aria-label={
+                  isLiveSessionActive ? 'Stop live voice session' : 'Start live voice session'
+                }
+                role="switch"
+                aria-checked={isLiveSessionActive}
               >
-                <ImagePlus size={CTA_ICON_SIZE} className="text-white" />
+                {isLiveSessionActive && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -inset-0.5 rounded-full bg-gradient-to-r from-[#c49746]/30 to-[#feeaa5]/20 blur-sm"
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1">
+                  <Sparkles size={14} aria-hidden="true" />
+                  <span className="text-xs font-medium leading-none">Live</span>
+                </span>
               </button>
-            </div>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              data-testid="header-upload-btn"
+              className={CTA_BUTTON}
+              aria-label="Attach images"
+              title="Attach images"
+            >
+              <ImagePlus size={CTA_ICON_SIZE} className="text-white" />
+            </button>
           </div>
         </div>
 
