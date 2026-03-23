@@ -57,14 +57,41 @@ serve(async req => {
       );
     }
 
-    // Fetch the HTML content
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ChravelBot/1.0; +https://chravel.com)',
-      },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-      redirect: 'error', // SECURITY: Prevent redirect-chain SSRF to internal hosts
-    });
+    // Follow redirects manually with per-hop SSRF validation.
+    // Using redirect: 'manual' instead of 'follow' ensures every redirect target
+    // is validated against the SSRF blocklist (private IPs, localhost, link-local).
+    // Using 'error' was too strict — it blocked legitimate redirects (www normalization, CDN routing).
+    const MAX_REDIRECTS = 5;
+    let currentUrl = url;
+    let response!: Response;
+
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      response = await fetch(currentUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; ChravelBot/1.0; +https://chravel.com)',
+        },
+        signal: AbortSignal.timeout(10000),
+        redirect: 'manual',
+      });
+
+      // Not a redirect — done
+      if (response.status < 300 || response.status >= 400) break;
+
+      const location = response.headers.get('location');
+      if (!location) throw new Error('Redirect with no Location header');
+
+      // Resolve relative redirect URLs against current URL
+      currentUrl = new URL(location, currentUrl).toString();
+
+      // SSRF gate: validate every redirect hop against the blocklist
+      if (!(await validateExternalUrlBeforeFetch(currentUrl))) {
+        throw new Error('Redirect target failed SSRF validation');
+      }
+
+      if (hop === MAX_REDIRECTS) {
+        throw new Error('Too many redirects');
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -73,34 +100,40 @@ serve(async req => {
     const html = await response.text();
     const metadata: OGMetadata = {};
 
-    // Extract OG tags using regex (simple but effective)
+    // Extract OG tags using regex.
+    // Many sites emit attributes in either order (property then content, or content then property),
+    // so we check both orderings for each tag.
+    const matchOgTag = (tag: string): RegExpMatchArray | null =>
+      html.match(new RegExp(`<meta\\s+property=["']${tag}["']\\s+content=["']([^"']+)["']`, 'i')) ||
+      html.match(new RegExp(`<meta\\s+content=["']([^"']+)["']\\s+property=["']${tag}["']`, 'i'));
+
+    const matchNameTag = (name: string): RegExpMatchArray | null =>
+      html.match(new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([^"']+)["']`, 'i')) ||
+      html.match(new RegExp(`<meta\\s+content=["']([^"']+)["']\\s+name=["']${name}["']`, 'i'));
+
     const ogTitleMatch =
-      html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
-      html.match(/<meta\s+name=["']twitter:title["']\s+content=["']([^"']+)["']/i) ||
+      matchOgTag('og:title') ||
+      matchNameTag('twitter:title') ||
       html.match(/<title>([^<]+)<\/title>/i);
     if (ogTitleMatch) metadata.title = ogTitleMatch[1].trim();
 
     const ogDescriptionMatch =
-      html.match(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i) ||
-      html.match(/<meta\s+name=["']twitter:description["']\s+content=["']([^"']+)["']/i) ||
-      html.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i);
+      matchOgTag('og:description') ||
+      matchNameTag('twitter:description') ||
+      matchNameTag('description');
     if (ogDescriptionMatch) metadata.description = ogDescriptionMatch[1].trim();
 
-    const ogImageMatch =
-      html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i) ||
-      html.match(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)["']/i);
+    const ogImageMatch = matchOgTag('og:image') || matchNameTag('twitter:image');
     if (ogImageMatch) {
       const imageUrl = ogImageMatch[1].trim();
       // Resolve relative URLs
       metadata.image = imageUrl.startsWith('http') ? imageUrl : new URL(imageUrl, url).toString();
     }
 
-    const ogSiteNameMatch = html.match(
-      /<meta\s+property=["']og:site_name["']\s+content=["']([^"']+)["']/i,
-    );
+    const ogSiteNameMatch = matchOgTag('og:site_name');
     if (ogSiteNameMatch) metadata.siteName = ogSiteNameMatch[1].trim();
 
-    const ogTypeMatch = html.match(/<meta\s+property=["']og:type["']\s+content=["']([^"']+)["']/i);
+    const ogTypeMatch = matchOgTag('og:type');
     if (ogTypeMatch) metadata.type = ogTypeMatch[1].trim();
 
     metadata.url = url;

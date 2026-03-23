@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FileText, Link, Download, Maximize2, AudioLines } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { ChatMessage } from './types';
@@ -36,6 +36,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   const hasAttachments =
     message.attachments && Array.isArray(message.attachments) && message.attachments.length > 0;
   const resolvedMediaUrl = useResolvedTripMediaUrl({ url: message.media_url ?? null });
+  const [linkImgError, setLinkImgError] = useState(false);
 
   // Render media content based on type
   const renderMediaContent = () => {
@@ -128,11 +129,12 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
         rel="noopener noreferrer"
         className="mt-2 block bg-gray-800 hover:bg-gray-700 rounded-lg overflow-hidden transition-colors"
       >
-        {preview.image && (
+        {preview.image && !linkImgError && (
           <img
             src={preview.image}
             alt={preview.title || 'Link preview'}
             className="w-full h-48 object-cover"
+            onError={() => setLinkImgError(true)}
           />
         )}
         <div className="p-3">

@@ -124,6 +124,7 @@ export const MessageBubble = memo(
     const [showReactions, setShowReactions] = useState(false);
     const [lightboxOpen, setLightboxOpen] = useState(false);
     const [lightboxIndex, setLightboxIndex] = useState(0);
+    const [linkImgError, setLinkImgError] = useState(false);
     const [swipeOffset, setSwipeOffset] = useState(0);
     const [swipeThresholdMet, setSwipeThresholdMet] = useState(false);
     const swipeTouchStartX = useRef(0);
@@ -266,11 +267,12 @@ export const MessageBubble = memo(
           rel="noopener noreferrer"
           className="mt-2 block bg-gray-800 hover:bg-gray-700 rounded-lg overflow-hidden transition-colors"
         >
-          {preview.image && (
+          {preview.image && !linkImgError && (
             <img
               src={preview.image}
               alt={preview.title || 'Link preview'}
               className="w-full h-32 object-cover"
+              onError={() => setLinkImgError(true)}
             />
           )}
           <div className="p-3">

@@ -14,7 +14,13 @@ const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/i;
 
 function extractUrl(text: string): string | null {
   const match = text.match(URL_REGEX);
-  return match ? match[0] : null;
+  if (!match) return null;
+  let url = match[0];
+  // The edge function's Zod schema only accepts HTTPS; auto-upgrade HTTP URLs
+  if (url.startsWith('http://')) {
+    url = url.replace('http://', 'https://');
+  }
+  return url;
 }
 
 function getDomain(url: string): string {
@@ -37,7 +43,11 @@ export function useLinkPreviews(
   messages: Array<{ id: string; text: string; linkPreview?: unknown }>,
 ): Record<string, LinkPreview> {
   const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
+  // Tracks URLs currently being fetched or successfully fetched (prevents concurrent dupes)
   const fetchedUrlsRef = useRef<Set<string>>(new Set());
+  // Tracks URLs that failed, with retry count (allows one retry)
+  const failedUrlsRef = useRef<Map<string, number>>(new Map());
+  const MAX_RETRIES = 1;
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -53,10 +63,14 @@ export function useLinkPreviews(
 
       const url = extractUrl(msg.text);
       if (!url) continue;
-      // Skip if we already fetched this URL (dedup across messages)
+      // Skip if we already fetched this URL successfully (dedup across messages)
       if (fetchedUrlsRef.current.has(url)) continue;
+      // Skip if this URL has exceeded max retries
+      const failCount = failedUrlsRef.current.get(url) ?? 0;
+      if (failCount > MAX_RETRIES) continue;
 
       messagesToFetch.push({ id: msg.id, url });
+      // Mark as in-flight to prevent concurrent duplicate fetches
       fetchedUrlsRef.current.add(url);
     }
 
@@ -80,6 +94,10 @@ export function useLinkPreviews(
               image: metadata.image,
               domain: getDomain(url),
             };
+          } else {
+            // Remove from in-flight set so it can be retried on next render
+            fetchedUrlsRef.current.delete(url);
+            failedUrlsRef.current.set(url, (failedUrlsRef.current.get(url) ?? 0) + 1);
           }
         });
         await Promise.all(promises);
