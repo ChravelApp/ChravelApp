@@ -33,7 +33,8 @@ const AuthPage = () => {
     return raw === 'signup' ? 'signup' : 'signin';
   }, [searchParams]);
 
-  const isNative = searchParams.get('native') === 'true';
+  const isNative =
+    typeof window !== 'undefined' && !!(window as Record<string, unknown>).ChravelNative;
 
   // Restore invite context from query param into localStorage
   // This ensures the invite code survives OAuth redirects that may clear localStorage
