@@ -276,3 +276,26 @@ Known security anti-patterns discovered during audits. Reference this before int
 - **Related files:** `src/components/media/MediaTile.tsx`, `src/components/media/MediaViewerModal.tsx`, `src/components/mobile/MediaGridItem.tsx`, `src/hooks/useResolvedTripMediaUrl.ts`
 - **Fixed in:** March 2026 media forensic fix
 - **Confidence:** high
+
+## Expo WebView push permissions call wrong runtime API
+- **Status:** fixed
+- **Subsystem:** native bridge / push permissions
+- **Bug class:** runtime integration drift
+- **Symptom:** In Expo WebView shell, enabling push notifications times out or returns denied, even though native shell can issue a token.
+- **User-facing impact:** Users cannot enable push from in-app notification settings in wrapper mode.
+- **Trigger conditions:** `isNativePush()` returns true for Expo WebView, but `requestPermissions()` and `checkPermissions()` still call Capacitor `PushNotifications` plugin APIs.
+- **Likely root cause:** Runtime detection was updated for Expo only in token registration path (`push:register`) and not in permission paths.
+- **Root cause chain:**
+  - Immediate cause: permission check/request returns denied or throws on webview runtime
+  - Proximate cause: Capacitor plugin APIs are invoked outside Capacitor shell
+  - Underlying cause: partial runtime branching across push lifecycle functions
+- **How to reproduce:**
+  1. Force runtime to Expo WebView (`window.ChravelNative.isNative = true`) in unit test
+  2. Call `requestPermissions()` or `checkPermissions()`
+  3. Observe no bridge event listener and Capacitor API path usage
+- **How to confirm:** Add regression test that expects listener for `chravel:push-permission` and no call to `PushNotifications.requestPermissions/checkPermissions`.
+- **Smallest safe fix:** Add Expo-specific permission bridge path using `postToNative` (`push:permission:request` / `push:permission:check`) and resolve via `chravel:push-permission` event.
+- **Regression risks:** Native shell must implement the two permission bridge message types; otherwise flow fail-closes to denied on timeout.
+- **Related files:** `src/native/push.ts`, `src/native/__tests__/push.expoBridge.test.ts`
+- **Fixed in:** March 2026 Expo bridge compatibility fix
+- **Confidence:** high

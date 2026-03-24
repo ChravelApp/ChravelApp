@@ -10,6 +10,7 @@ import {
   ActionPerformed,
   PushNotificationSchema,
 } from '@capacitor/push-notifications';
+import { getNativeRuntime, postToNative, onNativeEvent } from './bridge';
 
 // Typed payload format for Chravel notifications
 export interface ChravelPushPayload {
@@ -35,10 +36,12 @@ export interface PushNotificationResult {
 }
 
 /**
- * Check if native push is available
- * Guards all native calls to prevent web crashes
+ * Check if native push is available (Capacitor or Expo WebView).
+ * Guards all native calls to prevent web crashes.
  */
 export function isNativePush(): boolean {
+  const runtime = getNativeRuntime();
+  if (runtime === 'expo-webview') return true;
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('PushNotifications');
 }
 
@@ -50,6 +53,40 @@ function normalizePermission(permission: string): PermissionResult {
   return 'prompt';
 }
 
+interface ExpoPermissionBridgeDetail {
+  receive?: string | null;
+  error?: string | null;
+}
+
+function requestExpoPermissionViaBridge(action: 'check' | 'request'): Promise<PermissionResult> {
+  return new Promise(resolve => {
+    const EVENT_NAME = 'chravel:push-permission';
+    const TIMEOUT_MS = 15_000;
+
+    const unsub = onNativeEvent<ExpoPermissionBridgeDetail>(EVENT_NAME, detail => {
+      clearTimeout(timeoutId);
+      unsub();
+
+      if (typeof detail?.receive === 'string') {
+        resolve(normalizePermission(detail.receive));
+        return;
+      }
+
+      // Fail closed when bridge payload is malformed or missing.
+      resolve('denied');
+    });
+
+    const timeoutId = setTimeout(() => {
+      unsub();
+      resolve('denied');
+    }, TIMEOUT_MS);
+
+    postToNative({
+      type: action === 'request' ? 'push:permission:request' : 'push:permission:check',
+    });
+  });
+}
+
 /**
  * Request push notification permissions
  * Call AFTER user consent (e.g., after login, on settings screen)
@@ -59,10 +96,14 @@ export async function requestPermissions(): Promise<PermissionResult> {
     return 'denied';
   }
 
+  if (getNativeRuntime() === 'expo-webview') {
+    return requestExpoPermissionViaBridge('request');
+  }
+
   try {
     const result = await PushNotifications.requestPermissions();
     return normalizePermission(result.receive);
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush permission request failed
     }
@@ -78,10 +119,14 @@ export async function checkPermissions(): Promise<PermissionResult> {
     return 'denied';
   }
 
+  if (getNativeRuntime() === 'expo-webview') {
+    return requestExpoPermissionViaBridge('check');
+  }
+
   try {
     const result = await PushNotifications.checkPermissions();
     return normalizePermission(result.receive);
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush check permissions failed
     }
@@ -96,6 +141,29 @@ export async function checkPermissions(): Promise<PermissionResult> {
 export async function register(): Promise<PushNotificationResult> {
   if (!isNativePush()) {
     return { token: null, error: 'Not native platform' };
+  }
+
+  // Expo WebView: request token via bridge and wait for response.
+  if (getNativeRuntime() === 'expo-webview') {
+    return new Promise(resolve => {
+      const TIMEOUT_MS = 15_000;
+
+      const unsub = onNativeEvent<{ token: string | null; error: string | null }>(
+        'chravel:push-token',
+        detail => {
+          clearTimeout(timeoutId);
+          unsub();
+          resolve({ token: detail.token, error: detail.error ?? undefined });
+        },
+      );
+
+      const timeoutId = setTimeout(() => {
+        unsub();
+        resolve({ token: null, error: 'Registration timed out' });
+      }, TIMEOUT_MS);
+
+      postToNative({ type: 'push:register' });
+    });
   }
 
   // 15s timeout prevents the app from hanging if iOS never fires
@@ -160,7 +228,7 @@ export async function unregister(): Promise<void> {
 
   try {
     await PushNotifications.removeAllListeners();
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush unregister failed
     }
@@ -251,7 +319,7 @@ export async function getDeliveredNotifications(): Promise<PushNotificationSchem
   try {
     const result = await PushNotifications.getDeliveredNotifications();
     return result.notifications;
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush get delivered failed
     }
@@ -267,7 +335,7 @@ export async function removeAllDeliveredNotifications(): Promise<void> {
 
   try {
     await PushNotifications.removeAllDeliveredNotifications();
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush remove delivered failed
     }

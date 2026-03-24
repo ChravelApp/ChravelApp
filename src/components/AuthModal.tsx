@@ -11,9 +11,11 @@ interface AuthModalProps {
    * Defaults to 'signin' to preserve existing behavior.
    */
   initialMode?: 'signin' | 'signup';
+  /** When true, hides the close button (used in native app where auth is required). */
+  hideClose?: boolean;
 }
 
-export const AuthModal = ({ isOpen, onClose, initialMode }: AuthModalProps) => {
+export const AuthModal = ({ isOpen, onClose, initialMode, hideClose }: AuthModalProps) => {
   const { signIn, signInWithGoogle, signInWithApple, signUp, resetPassword, isLoading, user } =
     useAuth();
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -305,8 +307,20 @@ export const AuthModal = ({ isOpen, onClose, initialMode }: AuthModalProps) => {
   );
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end tablet:items-center landscape:items-center justify-center p-0 tablet:p-4 landscape:p-4 animate-fade-in">
-      <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-t-3xl tablet:rounded-3xl landscape:rounded-3xl p-6 tablet:p-8 max-w-md w-full safe-bottom animate-slide-in-bottom tablet:animate-scale-in max-h-[90dvh] overflow-y-auto">
+    <div
+      className={
+        hideClose
+          ? 'fixed inset-0 z-[100] flex items-center justify-center bg-background'
+          : 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end tablet:items-center landscape:items-center justify-center p-0 tablet:p-4 landscape:p-4 animate-fade-in'
+      }
+    >
+      <div
+        className={
+          hideClose
+            ? 'w-full h-full flex flex-col justify-center p-6 max-w-md mx-auto'
+            : 'bg-white/10 backdrop-blur-md border border-white/20 rounded-t-3xl tablet:rounded-3xl landscape:rounded-3xl p-6 tablet:p-8 max-w-md w-full safe-bottom animate-slide-in-bottom tablet:animate-scale-in max-h-[90dvh] overflow-y-auto'
+        }
+      >
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-white">
             {mode === 'forgot'
@@ -315,9 +329,11 @@ export const AuthModal = ({ isOpen, onClose, initialMode }: AuthModalProps) => {
                 ? 'Create Account'
                 : 'Welcome Back'}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <X size={24} />
-          </button>
+          {!hideClose && (
+            <button onClick={onClose} className="text-gray-400 hover:text-white">
+              <X size={24} />
+            </button>
+          )}
         </div>
 
         {success && (

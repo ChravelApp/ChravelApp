@@ -268,3 +268,11 @@
 - **Evidence:** March 2026 remediation added iOS consumer checkout guards in `useConsumerSubscription`, `ConsumerBillingSection`, and `supabase/functions/create-checkout/index.ts`.
 - **Provenance:** 2026-03-19 launch blocker remediation pass.
 - **Confidence:** high
+
+### Native-wrapper bridge adapters must mirror full permission lifecycle, not just token registration
+- **Tip:** When introducing a WebView/native bridge for push notifications, port the full permission flow (`checkPermissions`, `requestPermissions`, `register`) to the bridge path. If only token registration is bridged while permission APIs still call Capacitor plugins, WebView runtimes can fail closed and never reach registration.
+- **Applies when:** Hybrid runtime support (Capacitor + Expo WebView + web), especially after adding runtime detection helpers.
+- **Avoid when:** The runtime is pure Capacitor/native and no alternate bridge path exists.
+- **Evidence:** Expo WebView runtime was marked native in `isNativePush()`, but `requestPermissions` and `checkPermissions` still invoked `@capacitor/push-notifications`; adding `chravel:push-permission` bridge events and tests restored parity.
+- **Provenance:** March 2026 native bridge forensic fix (`src/native/push.ts`, `src/native/__tests__/push.expoBridge.test.ts`).
+- **Confidence:** high

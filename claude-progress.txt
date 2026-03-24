@@ -148,3 +148,8 @@
 - Added visible abuse-reporting entry points in Support and Consumer General Settings (`safety@chravelapp.com`) to improve launch trust/compliance readiness.
 - Tightened chunk error recovery heuristic in `App.tsx` by removing generic `Failed to fetch` from chunk detection.
 - Verification: `npm test -- --run src/native/__tests__/pushRouting.test.ts`, `npm run typecheck`, `npm run lint` completed successfully (lint has existing repo-wide warnings only).
+2026-03-24 — Expo WebView push permission bridge regression fix
+- Root-caused native-wrapper push opt-in failures to `src/native/push.ts` routing Expo WebView through Capacitor permission APIs (`PushNotifications.requestPermissions/checkPermissions`) even though Expo path only supports bridge messaging.
+- Implemented surgical bridge parity fix in `src/native/push.ts`: Expo runtime now resolves permission status via bridge request/response events (`push:permission:request` / `push:permission:check` with `chravel:push-permission`), while Capacitor behavior remains unchanged.
+- Added focused regression tests `src/native/__tests__/push.expoBridge.test.ts` to verify Expo mode uses bridge permission flow and does not call Capacitor permission methods.
+- Verification: `npm run test -- --run src/native/__tests__/push.expoBridge.test.ts src/native/__tests__/pushRouting.test.ts`, `npm run lint`, `npm run typecheck`, `npm run build` all pass (existing repo-wide lint warnings remain).

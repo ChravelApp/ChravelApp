@@ -18,6 +18,7 @@ import { useNotificationRealtimeStore } from '@/store/notificationRealtimeStore'
 import { conciergeCacheService } from '@/services/conciergeCacheService';
 import { isSessionTokenValid } from '@/utils/tokenValidation';
 import { authDebug } from '@/utils/authDebug';
+import { signalReady } from '@/native/bridge';
 import { telemetry } from '@/telemetry/service';
 import { toast } from '@/hooks/use-toast';
 import { logAuthEvent } from '@/utils/authTelemetry';
@@ -120,6 +121,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isLoadingRef = useRef(true);
+  const hasSignaledReady = useRef(false);
+
+  // Signal the native shell that auth hydration is complete.
+  // This is a fire-and-forget postMessage — no auth state is affected.
+  useEffect(() => {
+    if (!isLoading && !hasSignaledReady.current) {
+      hasSignaledReady.current = true;
+      signalReady();
+    }
+  }, [isLoading]);
 
   /**
    * App-preview mode should behave like "full demo access" even when there is no real auth session.
