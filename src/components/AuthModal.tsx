@@ -307,8 +307,20 @@ export const AuthModal = ({ isOpen, onClose, initialMode, hideClose }: AuthModal
   );
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end tablet:items-center landscape:items-center justify-center p-0 tablet:p-4 landscape:p-4 animate-fade-in">
-      <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-t-3xl tablet:rounded-3xl landscape:rounded-3xl p-6 tablet:p-8 max-w-md w-full safe-bottom animate-slide-in-bottom tablet:animate-scale-in max-h-[90dvh] overflow-y-auto">
+    <div
+      className={
+        hideClose
+          ? 'fixed inset-0 z-[100] flex items-center justify-center bg-background'
+          : 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end tablet:items-center landscape:items-center justify-center p-0 tablet:p-4 landscape:p-4 animate-fade-in'
+      }
+    >
+      <div
+        className={
+          hideClose
+            ? 'w-full h-full flex flex-col justify-center p-6 max-w-md mx-auto'
+            : 'bg-white/10 backdrop-blur-md border border-white/20 rounded-t-3xl tablet:rounded-3xl landscape:rounded-3xl p-6 tablet:p-8 max-w-md w-full safe-bottom animate-slide-in-bottom tablet:animate-scale-in max-h-[90dvh] overflow-y-auto'
+        }
+      >
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-white">
             {mode === 'forgot'
