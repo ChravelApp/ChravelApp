@@ -103,7 +103,7 @@ export async function requestPermissions(): Promise<PermissionResult> {
   try {
     const result = await PushNotifications.requestPermissions();
     return normalizePermission(result.receive);
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush permission request failed
     }
@@ -126,7 +126,7 @@ export async function checkPermissions(): Promise<PermissionResult> {
   try {
     const result = await PushNotifications.checkPermissions();
     return normalizePermission(result.receive);
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush check permissions failed
     }
@@ -228,7 +228,7 @@ export async function unregister(): Promise<void> {
 
   try {
     await PushNotifications.removeAllListeners();
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush unregister failed
     }
@@ -319,7 +319,7 @@ export async function getDeliveredNotifications(): Promise<PushNotificationSchem
   try {
     const result = await PushNotifications.getDeliveredNotifications();
     return result.notifications;
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush get delivered failed
     }
@@ -335,7 +335,7 @@ export async function removeAllDeliveredNotifications(): Promise<void> {
 
   try {
     await PushNotifications.removeAllDeliveredNotifications();
-  } catch (error) {
+  } catch {
     if (import.meta.env.DEV) {
       // NativePush remove delivered failed
     }
