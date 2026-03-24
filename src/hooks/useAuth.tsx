@@ -30,6 +30,35 @@ const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): P
   ]);
 };
 
+const AUTH_REDIRECT_QUERY_KEYS = ['returnTo', 'invite', 'native', 'mode'] as const;
+
+/**
+ * Preserve auth-flow query context when redirecting to OAuth/email callbacks.
+ * This keeps wrapper-specific auth routes (e.g. /auth?native=true) stable after provider round-trips.
+ */
+const buildAuthRedirectUrl = (): string => {
+  const currentParams = new URLSearchParams(window.location.search);
+  const authRedirectUrl = new URL('/auth', window.location.origin);
+
+  for (const key of AUTH_REDIRECT_QUERY_KEYS) {
+    const value = currentParams.get(key);
+    if (!value) continue;
+
+    // Only preserve supported auth modes.
+    if (key === 'mode' && value !== 'signin' && value !== 'signup') continue;
+    // Only preserve native flag when explicitly enabled.
+    if (key === 'native' && value !== 'true') continue;
+
+    authRedirectUrl.searchParams.set(key, value);
+  }
+
+  if (authRedirectUrl.searchParams.size === 0) {
+    return `${window.location.origin}/`;
+  }
+
+  return authRedirectUrl.toString();
+};
+
 interface UserProfile {
   id: string;
   user_id: string;
@@ -849,11 +878,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signInWithGoogle = async (): Promise<{ error?: string }> => {
     try {
-      // Preserve returnTo so OAuth callback lands on AuthPage which redirects to the intended route
-      const returnTo = new URLSearchParams(window.location.search).get('returnTo');
-      const redirectUrl = returnTo
-        ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
-        : `${window.location.origin}/`;
+      const redirectUrl = buildAuthRedirectUrl();
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -888,11 +913,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signInWithApple = async (): Promise<{ error?: string }> => {
     try {
-      // Preserve returnTo so OAuth callback lands on AuthPage which redirects to the intended route
-      const returnTo = new URLSearchParams(window.location.search).get('returnTo');
-      const redirectUrl = returnTo
-        ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
-        : `${window.location.origin}/`;
+      const redirectUrl = buildAuthRedirectUrl();
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
@@ -969,11 +990,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       setIsLoading(true);
 
-      // Preserve returnTo so email confirmation lands back in the right place
-      const signUpReturnTo = new URLSearchParams(window.location.search).get('returnTo');
-      const emailRedirectUrl = signUpReturnTo
-        ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(signUpReturnTo)}`
-        : `${window.location.origin}/`;
+      const emailRedirectUrl = buildAuthRedirectUrl();
 
       const { data, error } = await supabase.auth.signUp({
         email,

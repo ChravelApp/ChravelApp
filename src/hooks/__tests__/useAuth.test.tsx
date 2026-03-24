@@ -121,6 +121,7 @@ const createWrapper = () => {
 describe('AuthProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState(null, '', '/');
     // Reset auth mocks to default state
     mockSupabaseClient.auth.getSession.mockResolvedValue({
       data: { session: null },
@@ -200,5 +201,72 @@ describe('AuthProvider', () => {
 
     expect(signUpResult.error).toBeUndefined();
     expect(mockSupabaseClient.auth.signUp).toHaveBeenCalled();
+  });
+
+  it('preserves native auth query context for OAuth redirects', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/auth?native=true&invite=abc123&mode=signup&returnTo=%2Fjoin%2Fabc123',
+    );
+    mockSupabaseClient.auth.signInWithOAuth.mockResolvedValue({ error: null });
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const oauthResult = await result.current.signInWithGoogle();
+    expect(oauthResult.error).toBeUndefined();
+    expect(mockSupabaseClient.auth.signInWithOAuth).toHaveBeenCalledTimes(1);
+
+    const oauthArg = mockSupabaseClient.auth.signInWithOAuth.mock.calls[0][0];
+    const redirectUrl = new URL(oauthArg.options.redirectTo);
+    expect(`${redirectUrl.origin}${redirectUrl.pathname}`).toBe(`${window.location.origin}/auth`);
+    expect(redirectUrl.searchParams.get('native')).toBe('true');
+    expect(redirectUrl.searchParams.get('invite')).toBe('abc123');
+    expect(redirectUrl.searchParams.get('mode')).toBe('signup');
+    expect(redirectUrl.searchParams.get('returnTo')).toBe('/join/abc123');
+  });
+
+  it('preserves native auth query context for signup email redirects', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/auth?native=true&invite=abc123&mode=signup&returnTo=%2Fjoin%2Fabc123',
+    );
+    mockSupabaseClient.auth.signUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const signUpResult = await result.current.signUp(
+      'test@example.com',
+      'password123',
+      'Test',
+      'User',
+    );
+    expect(signUpResult.error).toBeUndefined();
+
+    const signUpArg = mockSupabaseClient.auth.signUp.mock.calls[0][0];
+    const emailRedirectUrl = new URL(signUpArg.options.emailRedirectTo);
+    expect(`${emailRedirectUrl.origin}${emailRedirectUrl.pathname}`).toBe(
+      `${window.location.origin}/auth`,
+    );
+    expect(emailRedirectUrl.searchParams.get('native')).toBe('true');
+    expect(emailRedirectUrl.searchParams.get('invite')).toBe('abc123');
+    expect(emailRedirectUrl.searchParams.get('mode')).toBe('signup');
+    expect(emailRedirectUrl.searchParams.get('returnTo')).toBe('/join/abc123');
   });
 });
