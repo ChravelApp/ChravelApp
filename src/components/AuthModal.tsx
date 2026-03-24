@@ -11,9 +11,11 @@ interface AuthModalProps {
    * Defaults to 'signin' to preserve existing behavior.
    */
   initialMode?: 'signin' | 'signup';
+  /** When true, hides the close button (used in native app where auth is required). */
+  hideClose?: boolean;
 }
 
-export const AuthModal = ({ isOpen, onClose, initialMode }: AuthModalProps) => {
+export const AuthModal = ({ isOpen, onClose, initialMode, hideClose }: AuthModalProps) => {
   const { signIn, signInWithGoogle, signInWithApple, signUp, resetPassword, isLoading, user } =
     useAuth();
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -315,9 +317,11 @@ export const AuthModal = ({ isOpen, onClose, initialMode }: AuthModalProps) => {
                 ? 'Create Account'
                 : 'Welcome Back'}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <X size={24} />
-          </button>
+          {!hideClose && (
+            <button onClick={onClose} className="text-gray-400 hover:text-white">
+              <X size={24} />
+            </button>
+          )}
         </div>
 
         {success && (
