@@ -33,6 +33,8 @@ const AuthPage = () => {
     return raw === 'signup' ? 'signup' : 'signin';
   }, [searchParams]);
 
+  const isNative = searchParams.get('native') === 'true';
+
   // Restore invite context from query param into localStorage
   // This ensures the invite code survives OAuth redirects that may clear localStorage
   useEffect(() => {
@@ -64,6 +66,7 @@ const AuthPage = () => {
       <AuthModal
         isOpen={true}
         initialMode={mode}
+        hideClose={isNative}
         onClose={() => navigate(returnTo, { replace: true })}
       />
     </div>

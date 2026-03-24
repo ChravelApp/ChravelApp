@@ -8,6 +8,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+import { getNativeRuntime, postToNative } from './bridge';
 
 /**
  * Returns true only when running inside a Capacitor native shell AND the
@@ -17,8 +18,16 @@ export function isNativeHaptics(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('Haptics');
 }
 
-async function safeRun(fn: () => Promise<void>): Promise<void> {
-  // Hard gate: never even attempt haptics on web.
+async function safeRun(fn: () => Promise<void>, bridgeStyle?: string): Promise<void> {
+  const runtime = getNativeRuntime();
+
+  // Expo WebView: send haptic request via bridge.
+  if (runtime === 'expo-webview' && bridgeStyle) {
+    postToNative({ type: 'haptic', style: bridgeStyle });
+    return;
+  }
+
+  // Capacitor: use native plugin.
   if (!isNativeHaptics()) return;
 
   try {
@@ -32,27 +41,27 @@ async function safeRun(fn: () => Promise<void>): Promise<void> {
 }
 
 export async function light(): Promise<void> {
-  await safeRun(() => Haptics.impact({ style: ImpactStyle.Light }));
+  await safeRun(() => Haptics.impact({ style: ImpactStyle.Light }), 'light');
 }
 
 export async function medium(): Promise<void> {
-  await safeRun(() => Haptics.impact({ style: ImpactStyle.Medium }));
+  await safeRun(() => Haptics.impact({ style: ImpactStyle.Medium }), 'medium');
 }
 
 export async function heavy(): Promise<void> {
-  await safeRun(() => Haptics.impact({ style: ImpactStyle.Heavy }));
+  await safeRun(() => Haptics.impact({ style: ImpactStyle.Heavy }), 'heavy');
 }
 
 export async function success(): Promise<void> {
-  await safeRun(() => Haptics.notification({ type: NotificationType.Success }));
+  await safeRun(() => Haptics.notification({ type: NotificationType.Success }), 'success');
 }
 
 export async function warning(): Promise<void> {
-  await safeRun(() => Haptics.notification({ type: NotificationType.Warning }));
+  await safeRun(() => Haptics.notification({ type: NotificationType.Warning }), 'warning');
 }
 
 export async function error(): Promise<void> {
-  await safeRun(() => Haptics.notification({ type: NotificationType.Error }));
+  await safeRun(() => Haptics.notification({ type: NotificationType.Error }), 'error');
 }
 
 /**
