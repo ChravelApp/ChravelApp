@@ -148,3 +148,8 @@
 - Added visible abuse-reporting entry points in Support and Consumer General Settings (`safety@chravelapp.com`) to improve launch trust/compliance readiness.
 - Tightened chunk error recovery heuristic in `App.tsx` by removing generic `Failed to fetch` from chunk detection.
 - Verification: `npm test -- --run src/native/__tests__/pushRouting.test.ts`, `npm run typecheck`, `npm run lint` completed successfully (lint has existing repo-wide warnings only).
+2026-03-24 — Native auth fullscreen OAuth redirect context hardening
+- Investigated PR #1082 (`feat/native-auth-fullscreen`) and identified auth-flow regression risk: OAuth/email redirect URLs in `useAuth` preserved only `returnTo`, dropping native wrapper context (`native=true`) and invite context (`invite`, `mode`) on provider round-trips.
+- Added failing-first regression tests in `src/hooks/__tests__/useAuth.test.tsx` proving current behavior dropped `native`, `invite`, and `mode` query params for both OAuth and signup email redirect URLs.
+- Implemented minimal fix in `src/hooks/useAuth.tsx`: introduced `buildAuthRedirectUrl()` and reused it for Google OAuth, Apple OAuth, and signup email confirmation redirects to preserve supported auth query context (`returnTo`, `invite`, `native=true`, `mode`).
+- Validation: `npm run test -- --run src/hooks/__tests__/useAuth.test.tsx`, `npm run lint`, `npm run typecheck`, `npm run build` all pass.

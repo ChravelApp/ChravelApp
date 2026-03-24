@@ -268,3 +268,11 @@
 - **Evidence:** March 2026 remediation added iOS consumer checkout guards in `useConsumerSubscription`, `ConsumerBillingSection`, and `supabase/functions/create-checkout/index.ts`.
 - **Provenance:** 2026-03-19 launch blocker remediation pass.
 - **Confidence:** high
+
+### OAuth and email auth redirects should preserve minimal auth context parameters
+- **Tip:** Build auth callback URLs from an allowlisted set of current query params (`returnTo`, `invite`, `native`, and validated `mode`) instead of preserving only `returnTo`. This prevents context loss after provider/email round-trips, especially on wrapper-specific auth routes.
+- **Applies when:** Constructing `redirectTo`/`emailRedirectTo` in auth hooks for Supabase OAuth/email signup flows.
+- **Avoid when:** Redirect context includes untrusted keys not required by auth flow; keep the list explicit and minimal.
+- **Evidence:** Native fullscreen auth (`/auth?native=true`) regressed after OAuth/signup callbacks because redirect builders in `useAuth` only retained `returnTo`, dropping `native` and invite context. An allowlisted helper fixed both Google/Apple OAuth and email signup redirects.
+- **Provenance:** March 2026 PR #1082 forensic debug (`src/hooks/useAuth.tsx` + `src/hooks/__tests__/useAuth.test.tsx`).
+- **Confidence:** high
