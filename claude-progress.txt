@@ -7,6 +7,13 @@
   - `src/hooks/__tests__/useNotificationRealtime.mapRowToNotification.test.ts`
 - Verification: `npm test -- --run src/services/__tests__/tripService.getUserTrips.test.ts src/hooks/__tests__/useNotificationRealtime.mapRowToNotification.test.ts`, `npm run lint`, `npm run typecheck`, `npm run build` all pass.
 
+2026-03-24 — Chat Links ingestion fix for user-shared URLs
+- Reproduced `#debugging` report where links sent from main trip chat did not appear in Media → Chat Links, and users saw long spinner/no links.
+- Root cause: URL indexing (`message-parser` -> `trip_link_index`) was invoked in `useChatComposer` before `trip_chat_messages` insert completed, passing a client-side synthetic message id (`msg_<timestamp>`) that cannot satisfy `trip_link_index.message_id` FK to real chat message rows.
+- Fix: removed pre-persist parser invocation from `useChatComposer` and moved link indexing trigger to `TripChat` send path after `sendTripMessage(...)` resolves with the real persisted message id; parser now runs as fire-and-forget with canonical DB id.
+- Added focused regression test `src/features/chat/hooks/__tests__/useChatComposer.test.tsx` to prevent reintroducing pre-persist parser invocation.
+- Verification: `npm run test -- --run src/features/chat/hooks/__tests__/useChatComposer.test.tsx`, `npm run lint`, `npm run typecheck`, `npm run build` all pass.
+
 2026-03-19 — Line-up image preview loading fix (secured storage signed URLs)
 - Reproduced `#debugging` report where Line-up file cards showed broken image thumbnails while file names and imported speaker text rendered correctly.
 - Root cause: `useEventLineupFiles` generated preview URLs with `getPublicUrl(...)` from `trip-media`, but `trip-media` has been secured (non-public except specific cover path), so public object URLs were inaccessible.
@@ -148,3 +155,9 @@
 - Added visible abuse-reporting entry points in Support and Consumer General Settings (`safety@chravelapp.com`) to improve launch trust/compliance readiness.
 - Tightened chunk error recovery heuristic in `App.tsx` by removing generic `Failed to fetch` from chunk detection.
 - Verification: `npm test -- --run src/native/__tests__/pushRouting.test.ts`, `npm run typecheck`, `npm run lint` completed successfully (lint has existing repo-wide warnings only).
+2026-03-24 — Chat Links ingestion ordering fix (Slack #debugging)
+- Reproduced `Chat Links` regression with focused failing test in `src/features/chat/hooks/__tests__/useChatComposer.test.tsx` proving parser was invoked before message persistence.
+- Root cause: chat URL parser (`message-parser`) was called from `useChatComposer` using client-generated ids (`msg_<timestamp>`), while `trip_link_index.message_id` references persisted `trip_chat_messages.id`; this sequencing prevented/failed chat-link index writes.
+- Fix: removed parser side effect from `useChatComposer` (make it pure composer state only) and moved link indexing to `TripChat` immediately after successful `sendTripMessage` using persisted message id via `useChatMessageParser`.
+- Guardrails: skip parser invocation for offline queued sends to avoid pre-persist id usage.
+- Validation: `npm run test -- --run src/features/chat/hooks/__tests__/useChatComposer.test.tsx`, `npm run test -- --run src/features/chat/components/__tests__/ChatInput.test.tsx`, `npm run lint`, `npm run typecheck`, `npm run build` all pass.

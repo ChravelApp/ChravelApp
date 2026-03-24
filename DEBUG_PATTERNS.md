@@ -276,3 +276,22 @@ Known security anti-patterns discovered during audits. Reference this before int
 - **Related files:** `src/components/media/MediaTile.tsx`, `src/components/media/MediaViewerModal.tsx`, `src/components/mobile/MediaGridItem.tsx`, `src/hooks/useResolvedTripMediaUrl.ts`
 - **Fixed in:** March 2026 media forensic fix
 - **Confidence:** high
+
+## Chat links missing in Media tab due to pre-persist parser call
+- **Status:** fixed
+- **Subsystem:** chat send pipeline / link indexing
+- **Bug class:** ordering / foreign-key mismatch
+- **Symptom:** User shares a URL in chat, but `Chat Links` tab stays empty (often with long spinner while waiting) even though the chat message itself appears.
+- **User-facing impact:** Link aggregation looks broken and unreliable.
+- **Trigger conditions:** Parser is invoked with a client-generated message id before `trip_chat_messages` insert completes.
+- **Likely root cause:** `message-parser` writes `trip_link_index.message_id`, but `message_id` has FK to `trip_chat_messages(id)`. Pre-persist ids do not exist in DB.
+- **Root cause chain:**
+  - Immediate cause: `trip_link_index` insert fails or is skipped
+  - Proximate cause: parser called with optimistic/local id
+  - Underlying cause: parsing/indexing not sequenced after persistence
+- **How to confirm:** Verify parser invocation uses `msg_<timestamp>` style id (or other non-DB id) instead of persisted UUID from `sendTripMessage`.
+- **Smallest safe fix:** Invoke `useChatMessageParser.parseMessage(persistedMessage.id, content, tripId)` only after message insert succeeds.
+- **Regression risks:** Avoid parsing during offline queued sends (no persisted row yet); preserve existing entity parsing path for non-index features.
+- **Related files:** `src/features/chat/components/TripChat.tsx`, `src/features/chat/hooks/useChatComposer.ts`
+- **Fixed in:** March 2026 forensic chat-links indexing fix
+- **Confidence:** high

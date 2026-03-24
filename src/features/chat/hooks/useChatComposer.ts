@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { useChatMessageParser } from './useChatMessageParser';
 import { getMockAvatar } from '@/utils/mockAvatars';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -62,7 +61,6 @@ export const useChatComposer = ({
   const [messageFilter, setMessageFilter] = useState<'all' | 'broadcasts' | 'channels'>('all');
 
   const { user } = useAuth();
-  const { parseMessage } = useChatMessageParser();
 
   const createMessage = useCallback(
     (
@@ -141,18 +139,13 @@ export const useChatComposer = ({
 
       const message = createMessage(inputMessage, options);
 
-      // Parse message for media and links (only if not in demo mode)
-      if (!demoMode && tripId && !isPayment) {
-        await parseMessage(message.id, inputMessage, tripId);
-      }
-
       // Clear input and reply context
       setInputMessage('');
       setReplyingTo(null);
 
       return message;
     },
-    [inputMessage, createMessage, demoMode, tripId, parseMessage, isEvent],
+    [inputMessage, createMessage, isEvent],
   );
 
   const setReply = useCallback((messageId: string, messageText: string, senderName: string) => {

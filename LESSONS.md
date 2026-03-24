@@ -65,6 +65,14 @@
 
 ## Recovery Tips
 
+### Persist-first parsing prevents link-index FK races in chat
+- **Tip:** If a parser writes dependent rows (for example, `trip_link_index.message_id`), run parsing only after the parent chat message insert returns a real DB `id`. Never parse against client-generated placeholder IDs.
+- **Applies when:** Chat/message flows where URL/media extraction writes indexed tables keyed by `message_id`.
+- **Avoid when:** Parser output is fully detached from persisted message rows.
+- **Evidence:** `TripChat` sent URL messages, then parsed links using `useChatComposer`'s `msg_<timestamp>` ID before `trip_chat_messages` insert completed. Because `trip_link_index.message_id` has an FK to `trip_chat_messages.id`, chat links intermittently failed to appear in Media > Chat Links and users saw long spinner/empty states.
+- **Provenance:** March 2026 Chat Links forensic fix (`TripChat` + `useChatComposer`).
+- **Confidence:** high
+
 ### Edge Function "Failed to fetch" in browser is usually a CORS-origin drift, not a DB insert bug
 - **Tip:** When a core mutation fails with a raw browser `TypeError: Failed to fetch` (especially via `supabase.functions.invoke`), verify the frontend origin against Edge Function CORS allowlist first. If the origin is missing, the network call is blocked before your handler/DB code runs.
 - **Applies when:** A user-facing mutation to an Edge Function fails with generic fetch error and no structured JSON error body.
@@ -267,4 +275,12 @@
 - **Avoid when:** Native IAP is fully implemented and server routes are intentionally platform-agnostic.
 - **Evidence:** March 2026 remediation added iOS consumer checkout guards in `useConsumerSubscription`, `ConsumerBillingSection`, and `supabase/functions/create-checkout/index.ts`.
 - **Provenance:** 2026-03-19 launch blocker remediation pass.
+- **Confidence:** high
+
+### Chat URL indexing must run after persistence when link rows reference message IDs
+- **Tip:** If link/media index tables reference `trip_chat_messages.id` via `message_id`, invoke parsing/indexing only after `sendChatMessage` returns a persisted message id. Do not parse with optimistic/client-generated ids.
+- **Applies when:** Chat composer flows that call message parsing or link extraction (`message-parser`, `insertLinkIndex`, media indexers).
+- **Avoid when:** Index rows are intentionally independent of chat messages (no FK/reference semantics).
+- **Evidence:** Chat links appeared in message bubbles but not Media `Chat Links` tab because parser ran with `msg_<timestamp>` id before DB insert; moving parser call to post-persist in `TripChat` restored `trip_link_index` rows.
+- **Provenance:** March 2026 chat links forensic fix.
 - **Confidence:** high
