@@ -33,6 +33,7 @@ import {
 import { useUnreadCounts } from '@/hooks/useUnreadCounts';
 import { supabase } from '@/integrations/supabase/client';
 import { parseMessage } from '@/services/chatContentParser';
+import { useChatMessageParser } from '@/features/chat/hooks/useChatMessageParser';
 import { MessageTypeBar } from './MessageTypeBar';
 import { ChatSearchOverlay } from './ChatSearchOverlay';
 import { useEffectiveSystemMessagePreferences } from '@/hooks/useSystemMessagePreferences';
@@ -227,6 +228,7 @@ export const TripChat = React.memo(
       sendMessage,
       filterMessages,
     } = useChatComposer({ tripId: resolvedTripId, demoMode: demoMode.isDemoMode, isEvent });
+    const { parseMessage: parseChatMessageIndex } = useChatMessageParser();
 
     // Extract unique roles from participants for channel generation
 
@@ -622,7 +624,7 @@ export const TripChat = React.memo(
         // Use actual privacy mode from trip config
         const effectivePrivacyMode = getEffectivePrivacyMode(privacyConfig);
 
-        await sendTripMessage(
+        const persistedMessage = await sendTripMessage(
           message.text,
           authorName,
           undefined,
@@ -633,6 +635,15 @@ export const TripChat = React.memo(
           replyingTo?.id,
           mentionedUserIds,
         );
+
+        // Parse links/media only after the message is persisted so `message_id`
+        // in `trip_link_index` / `trip_media_index` references a real row.
+        if (!isOffline && message.text.trim().length > 0) {
+          const persistedMessageId = persistedMessage?.id;
+          if (persistedMessageId) {
+            void parseChatMessageIndex(persistedMessageId, message.text, resolvedTripId);
+          }
+        }
 
         // Auto-parse message for entities (dates, times, locations)
         if (message.text && message.text.trim().length > 10) {
