@@ -1,12 +1,13 @@
 /**
  * batch-generate-embeddings — Admin-only batch trigger for embedding regeneration
- * Uses service role key internally. Protected by a simple admin secret.
+ * Uses service role key internally. Protected by the service-role bearer token.
  * DELETE THIS FUNCTION after use.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { invokeEmbeddingModel } from '../_shared/gemini.ts';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireServiceRole } from '../_shared/requireServiceRole.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -18,6 +19,11 @@ serve(async req => {
   }
 
   try {
+    const adminGuard = requireServiceRole(req, corsHeaders);
+    if (adminGuard.response) {
+      return adminGuard.response;
+    }
+
     const body = await req.json().catch(() => ({}));
     const offset = body.offset ?? 0;
     const limit = body.limit ?? 5;
