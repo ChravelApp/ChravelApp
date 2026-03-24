@@ -3,7 +3,7 @@
     "details": [
       {
         "appIDs": [
-          "TEAM_ID.com.chravel.app"
+          "2T6WY43H3X.com.chravel.app"
         ],
         "components": [
           {
@@ -23,6 +23,26 @@
             "comment": "OAuth callback"
           },
           {
+            "/": "/tour/*",
+            "comment": "Pro tour links"
+          },
+          {
+            "/": "/invite/*",
+            "comment": "Invite token links"
+          },
+          {
+            "/": "/share/*",
+            "comment": "Shared content links"
+          },
+          {
+            "/": "/profile/*",
+            "comment": "User profile links"
+          },
+          {
+            "/": "/organization/*",
+            "comment": "Organization links"
+          },
+          {
             "/": "/settings/*",
             "comment": "Deep link to settings"
           }
@@ -32,7 +52,7 @@
   },
   "webcredentials": {
     "apps": [
-      "TEAM_ID.com.chravel.app"
+      "2T6WY43H3X.com.chravel.app"
     ]
   }
 }
