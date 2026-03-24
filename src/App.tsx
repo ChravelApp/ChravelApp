@@ -23,6 +23,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { InternalAdminRoute } from './components/InternalAdminRoute';
 import { performanceService } from './services/performanceService';
 import { useDemoModeStore } from './store/demoModeStore';
+import { PushRegistration } from '@/native/PushRegistration';
 import { errorTracking } from './services/errorTracking';
 import { supabase } from './integrations/supabase/client';
 import { AppInitializer } from './components/app/AppInitializer';
@@ -374,6 +375,7 @@ const App = () => {
                   <PageViewTracker />
                   <ExitDemoButtonWithNav />
                   <NativeLifecycleBridge client={queryClient} />
+                  <PushRegistration />
                   <OfflineIndicatorGate />
                   <MobileAppLayout>
                     <Routes>
