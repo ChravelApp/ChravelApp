@@ -860,11 +860,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signInWithGoogle = async (): Promise<{ error?: string }> => {
     try {
-      // Preserve returnTo so OAuth callback lands on AuthPage which redirects to the intended route
+      // Redirect to /auth after OAuth so the auth page handles session + routing.
+      // The landing page (/) doesn't redirect authenticated users.
       const returnTo = new URLSearchParams(window.location.search).get('returnTo');
       const redirectUrl = returnTo
         ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
-        : `${window.location.origin}/`;
+        : `${window.location.origin}/auth`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -899,11 +900,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signInWithApple = async (): Promise<{ error?: string }> => {
     try {
-      // Preserve returnTo so OAuth callback lands on AuthPage which redirects to the intended route
       const returnTo = new URLSearchParams(window.location.search).get('returnTo');
       const redirectUrl = returnTo
         ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
-        : `${window.location.origin}/`;
+        : `${window.location.origin}/auth`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
