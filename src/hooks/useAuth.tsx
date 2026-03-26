@@ -18,7 +18,7 @@ import { useNotificationRealtimeStore } from '@/store/notificationRealtimeStore'
 import { conciergeCacheService } from '@/services/conciergeCacheService';
 import { isSessionTokenValid } from '@/utils/tokenValidation';
 import { authDebug } from '@/utils/authDebug';
-import { signalReady, isExpoWebView } from '@/native/bridge';
+import { signalReady } from '@/native/bridge';
 import { telemetry } from '@/telemetry/service';
 import { toast } from '@/hooks/use-toast';
 import { logAuthEvent } from '@/utils/authTelemetry';
@@ -862,14 +862,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       // Preserve returnTo so OAuth callback lands on AuthPage which redirects to the intended route
       const returnTo = new URLSearchParams(window.location.search).get('returnTo');
-      // In the native shell, redirect to the custom scheme so the
-      // ASWebAuthenticationSession auto-dismisses after OAuth.
-      const nativeRedirect = isExpoWebView() ? 'chravel://auth-callback' : null;
-      const redirectUrl = nativeRedirect
-        ? nativeRedirect
-        : returnTo
-          ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
-          : `${window.location.origin}/`;
+      const redirectUrl = returnTo
+        ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
+        : `${window.location.origin}/`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -906,12 +901,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       // Preserve returnTo so OAuth callback lands on AuthPage which redirects to the intended route
       const returnTo = new URLSearchParams(window.location.search).get('returnTo');
-      const nativeRedirect = isExpoWebView() ? 'chravel://auth-callback' : null;
-      const redirectUrl = nativeRedirect
-        ? nativeRedirect
-        : returnTo
-          ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
-          : `${window.location.origin}/`;
+      const redirectUrl = returnTo
+        ? `${window.location.origin}/auth?returnTo=${encodeURIComponent(returnTo)}`
+        : `${window.location.origin}/`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
