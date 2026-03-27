@@ -4,6 +4,7 @@ import { AudioPlayback } from "../voice/audioPlayback";
 import {
   VoiceWebSocketManager,
   VoiceWSEvents,
+  SetupMessage,
 } from "../voice/VoiceWebSocketManager";
 import { AdaptiveVad } from "../voice/adaptiveVad";
 import { CircuitBreaker } from "../voice/circuitBreaker";
@@ -24,11 +25,12 @@ export type VoiceState =
 interface SessionConfig {
   edgeFunctionUrl: string;
   userId: string;
+  authToken?: string;
 }
 
 interface VoiceSessionData {
   websocketUrl: string;
-  setupMessage: Record<string, unknown>;
+  setupMessage: SetupMessage;
 }
 
 interface UseGeminiLiveReturn {
@@ -144,10 +146,16 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
 
     try {
       const url = config.edgeFunctionUrl || VOICE_SESSION_URL;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (config.authToken) {
+        headers["Authorization"] = `Bearer ${config.authToken}`;
+      }
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: config.userId }),
+        headers,
+        body: JSON.stringify({}),
       });
 
       if (!response.ok) {
@@ -186,6 +194,10 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
           playbackRef.current?.enqueue(base64Audio);
           setAiRms(playbackRef.current?.getRms() || 0);
         }
+      },
+
+      onInputTranscript: (text: string) => {
+        setUserTranscript((prev) => prev + text);
       },
 
       onTranscript: (text: string, isFinal: boolean) => {
@@ -287,7 +299,7 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
         setState("error");
       }
     };
-  }, [cleanupSessionResources, config.edgeFunctionUrl, config.userId]);
+  }, [cleanupSessionResources, config.edgeFunctionUrl, config.authToken]);
 
   return {
     state,

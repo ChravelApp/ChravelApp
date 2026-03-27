@@ -18,7 +18,7 @@ export interface GroundingCard {
 export interface ActionCard {
   type: 'poll' | 'task' | 'calendar';
   label: string;
-  data: Record<string, any>;
+  data: Record<string, string | number | boolean>;
 }
 
 export interface GeminiAIResponse {
@@ -42,11 +42,11 @@ export interface TripContext {
   basecamp?: { name: string; address: string };
   preferences?: TripPreferences;
   participants?: Array<{ name: string; role: string }>;
-  itinerary?: any[];
-  budget?: any;
-  broadcasts?: any[];
-  links?: any[];
-  files?: any[];
+  itinerary?: Array<{ date: string; events?: Array<{ title: string; location: string; time: string }> }>;
+  budget?: { total?: number; spent?: number; currency?: string };
+  broadcasts?: Array<{ senderName: string; content: string }>;
+  links?: Array<{ title: string; url: string }>;
+  files?: Array<{ name: string; url: string }>;
   isPro?: boolean;
   proData?: ProTripData;
 }
@@ -96,7 +96,7 @@ ITINERARY:`;
       tripContext.itinerary.slice(0, 10).forEach((day, index) => {
         context += `
 Day ${index + 1} (${day.date}):`;
-        day.events?.forEach((event: any) => {
+        day.events?.forEach((event) => {
           context += `
   - ${event.title} at ${event.location} (${event.time})`;
         });
@@ -130,15 +130,15 @@ SAVED LINKS:`;
     return context;
   }
 
-  static parseGroundingCards(groundingMetadata: any): GroundingCard[] {
+  static parseGroundingCards(groundingMetadata: { groundingChunks?: Array<{ web?: { title?: string; uri?: string } }> } | undefined): GroundingCard[] {
     if (!groundingMetadata?.groundingChunks) return [];
 
     return groundingMetadata.groundingChunks
-      .filter((chunk: any) => chunk.web)
-      .map((chunk: any) => ({
+      .filter((chunk) => chunk.web)
+      .map((chunk) => ({
         type: 'link' as const,
-        title: chunk.web.title || '',
-        url: chunk.web.uri || '',
+        title: chunk.web?.title || '',
+        url: chunk.web?.uri || '',
         snippet: '',
       }));
   }

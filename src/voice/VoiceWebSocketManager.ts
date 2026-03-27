@@ -16,12 +16,26 @@ export interface VoiceWSEvents {
   onSetupComplete: () => void;
   onAudioData: (base64Audio: string) => void;
   onTranscript: (text: string, isFinal: boolean) => void;
+  onInputTranscript: (text: string) => void;
   onInterrupted: () => void;
   onError: (error: string) => void;
   onClose: (code: number, reason: string) => void;
 }
 
-interface SetupMessage {
+interface ServerContent {
+  interrupted?: boolean;
+  modelTurn?: {
+    parts: Array<{
+      inlineData?: { mimeType?: string; data?: string };
+      text?: string;
+    }>;
+  };
+  turnComplete?: boolean;
+  inputTranscription?: { text: string };
+  outputTranscription?: { text: string };
+}
+
+export interface SetupMessage {
   setup: {
     model: string;
     generation_config?: Record<string, unknown>;
@@ -173,7 +187,7 @@ export class VoiceWebSocketManager {
 
     // Server content (audio and/or text)
     if (msg.serverContent) {
-      const content = msg.serverContent;
+      const content = msg.serverContent as ServerContent;
 
       // Check for interruption (barge-in from server side)
       if (content.interrupted) {
@@ -191,11 +205,21 @@ export class VoiceWebSocketManager {
           ) {
             this.events.onAudioData(part.inlineData.data);
           }
-          // Text transcript
+          // Text transcript from model turn
           if (part.text) {
             this.events.onTranscript(part.text, false);
           }
         }
+      }
+
+      // Input transcription (user speech → text)
+      if (content.inputTranscription?.text) {
+        this.events.onInputTranscript(content.inputTranscription.text);
+      }
+
+      // Output transcription (AI speech → text)
+      if (content.outputTranscription?.text) {
+        this.events.onTranscript(content.outputTranscription.text, false);
       }
 
       // Turn complete signal

@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,14 +25,31 @@ serve(async (req) => {
   }
 
   try {
-    const { user_id } = await req.json()
-
-    if (!user_id) {
+    // ── Auth verification ─────────────────────────────────────────
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'Missing required parameter: user_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    )
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const user_id = user.id
 
     // ── Rate limiting ────────────────────────────────────────────
     const now = Date.now()
@@ -83,6 +101,8 @@ serve(async (req) => {
             },
           ],
         },
+        input_audio_transcription: {},
+        output_audio_transcription: {},
       },
     }
 
@@ -111,6 +131,20 @@ serve(async (req) => {
 })
 
 async function handleProxyWebSocket(req: Request): Promise<Response> {
+  // Verify auth via query param (WebSocket upgrade can't use custom headers)
+  const url = new URL(req.url)
+  const token = url.searchParams.get('token')
+  if (token) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    )
+    const { error: authError } = await supabase.auth.getUser(token)
+    if (authError) {
+      return new Response('Unauthorized', { status: 401, headers: corsHeaders })
+    }
+  }
+
   const serviceAccountJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY')
   const location = Deno.env.get('VERTEX_LOCATION') || 'us-central1'
 
