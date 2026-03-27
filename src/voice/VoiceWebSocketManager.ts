@@ -1,4 +1,3 @@
-
 import {
   WS_KEEPALIVE_INTERVAL_MS,
   WS_SETUP_TIMEOUT_MS,
@@ -8,8 +7,8 @@ import {
   LIVE_INPUT_MIME,
   getErrorMessage,
   isRetryableClose,
-} from './liveConstants';
-import { CircuitBreaker } from './circuitBreaker';
+} from "./liveConstants";
+import { CircuitBreaker } from "./circuitBreaker";
 
 // ── Event types ────────────────────────────────────────────────────
 
@@ -43,8 +42,7 @@ export class VoiceWebSocketManager {
   private closed = false;
 
   // Stored for reconnection
-  private lastUrl = '';
-  private lastToken = '';
+  private lastUrl = "";
   private lastSetup: SetupMessage | null = null;
 
   constructor(events: VoiceWSEvents, circuitBreaker: CircuitBreaker) {
@@ -53,14 +51,11 @@ export class VoiceWebSocketManager {
   }
 
   /** Open WebSocket, send setup message, wait for setupComplete */
-  connect(url: string, accessToken: string, setupMessage: SetupMessage): void {
+  connect(url: string, setupMessage: SetupMessage): void {
     this.closed = false;
     this.lastUrl = url;
-    this.lastToken = accessToken;
     this.lastSetup = setupMessage;
-
-    const wsUrl = `${url}?access_token=${accessToken}`;
-    this.ws = new WebSocket(wsUrl);
+    this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
       // Send setup message immediately
@@ -69,7 +64,7 @@ export class VoiceWebSocketManager {
       // Start setup timeout
       this.setupTimeout = setTimeout(() => {
         if (!this.setupComplete) {
-          this.events.onError('Connection setup timed out');
+          this.events.onError("Connection setup timed out");
           this.close();
         }
       }, WS_SETUP_TIMEOUT_MS);
@@ -80,14 +75,14 @@ export class VoiceWebSocketManager {
     };
 
     this.ws.onerror = () => {
-      this.events.onError('WebSocket connection error');
+      this.events.onError("WebSocket connection error");
     };
 
     this.ws.onclose = (event: CloseEvent) => {
       this.cleanup();
 
       if (this.closed) {
-        this.events.onClose(event.code, 'Session ended');
+        this.events.onClose(event.code, "Session ended");
         return;
       }
 
@@ -107,7 +102,12 @@ export class VoiceWebSocketManager {
 
   /** Send audio data to the server */
   sendAudio(base64Pcm: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.setupComplete) return;
+    if (
+      !this.ws ||
+      this.ws.readyState !== WebSocket.OPEN ||
+      !this.setupComplete
+    )
+      return;
 
     this.ws.send(
       JSON.stringify({
@@ -119,7 +119,7 @@ export class VoiceWebSocketManager {
             },
           ],
         },
-      })
+      }),
     );
   }
 
@@ -135,7 +135,7 @@ export class VoiceWebSocketManager {
     this.cleanup();
     if (this.ws) {
       try {
-        this.ws.close(1000, 'Client ended session');
+        this.ws.close(1000, "Client ended session");
       } catch {
         // Already closed
       }
@@ -150,7 +150,7 @@ export class VoiceWebSocketManager {
   // ── Message handling ───────────────────────────────────────────
 
   private handleMessage(raw: string): void {
-    let msg: Record<string, any>;
+    let msg: Record<string, unknown>;
     try {
       msg = JSON.parse(raw);
     } catch {
@@ -185,7 +185,10 @@ export class VoiceWebSocketManager {
       if (content.modelTurn?.parts) {
         for (const part of content.modelTurn.parts) {
           // Audio data
-          if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
+          if (
+            part.inlineData?.mimeType?.startsWith("audio/") &&
+            part.inlineData.data
+          ) {
             this.events.onAudioData(part.inlineData.data);
           }
           // Text transcript
@@ -198,14 +201,14 @@ export class VoiceWebSocketManager {
       // Turn complete signal
       if (content.turnComplete) {
         // Mark last transcript as final
-        this.events.onTranscript('', true);
+        this.events.onTranscript("", true);
       }
       return;
     }
 
     // Go away — server wants us to disconnect
     if (msg.goAway) {
-      this.events.onError('Server requested disconnect');
+      this.events.onError("Server requested disconnect");
       this.close();
       return;
     }
@@ -213,7 +216,7 @@ export class VoiceWebSocketManager {
     // Tool call (future use)
     if (msg.toolCall) {
       // Not implemented yet — log for debugging
-      console.log('[VoiceWS] Tool call received:', msg.toolCall);
+      console.log("[VoiceWS] Tool call received:", msg.toolCall);
     }
   }
 
@@ -237,12 +240,13 @@ export class VoiceWebSocketManager {
 
   private attemptReconnect(): void {
     this.reconnectAttempts++;
-    const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1);
+    const delay =
+      RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1);
 
     setTimeout(() => {
       if (this.closed) return;
-      if (this.lastUrl && this.lastToken && this.lastSetup) {
-        this.connect(this.lastUrl, this.lastToken, this.lastSetup);
+      if (this.lastUrl && this.lastSetup) {
+        this.connect(this.lastUrl, this.lastSetup);
       }
     }, delay);
   }

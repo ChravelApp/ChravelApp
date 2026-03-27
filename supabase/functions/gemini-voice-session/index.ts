@@ -1,11 +1,12 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+const VERTEX_WS_PATH =
+  'google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent'
 
 // Rate limiting: in-memory store (per isolate)
 const sessionTimestamps: Map<string, number[]> = new Map()
@@ -15,6 +16,11 @@ const RATE_WINDOW_MS = 5 * 60 * 1000 // 5 minutes
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  const upgrade = req.headers.get('upgrade') || ''
+  if (upgrade.toLowerCase() === 'websocket') {
+    return handleProxyWebSocket(req)
   }
 
   try {
@@ -51,15 +57,9 @@ serve(async (req) => {
       throw new Error('Missing Vertex AI configuration')
     }
 
-    const serviceAccount = JSON.parse(serviceAccountJson)
-
-    // ── Create OAuth2 access token via service account JWT ───────
-    const accessToken = await getAccessToken(serviceAccount)
-
     // ── Build session config ─────────────────────────────────────
     const model = 'gemini-live-2.5-flash-native-audio'
-
-    const websocketUrl = `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent`
+    const websocketUrl = buildProxyWebSocketUrl(req.url)
 
     const setupMessage = {
       setup: {
@@ -88,11 +88,16 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        accessToken,
         websocketUrl,
         setupMessage,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        },
+      }
     )
   } catch (error) {
     console.error('Voice session error:', error)
@@ -104,6 +109,91 @@ serve(async (req) => {
     )
   }
 })
+
+async function handleProxyWebSocket(req: Request): Promise<Response> {
+  const serviceAccountJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY')
+  const location = Deno.env.get('VERTEX_LOCATION') || 'us-central1'
+
+  if (!serviceAccountJson) {
+    return new Response('Missing Vertex AI configuration', { status: 500, headers: corsHeaders })
+  }
+
+  const serviceAccount = JSON.parse(serviceAccountJson)
+  const accessToken = await getAccessToken(serviceAccount)
+  const upstreamUrl = `wss://${location}-aiplatform.googleapis.com/ws/${VERTEX_WS_PATH}`
+
+  const { socket: clientSocket, response } = Deno.upgradeWebSocket(req)
+  const upstreamSocket = new WebSocket(upstreamUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  const queuedMessages: string[] = []
+  let upstreamReady = false
+  let socketsClosed = false
+
+  const closeSockets = (reason?: string) => {
+    if (socketsClosed) return
+    socketsClosed = true
+
+    try {
+      if (
+        clientSocket.readyState === WebSocket.OPEN ||
+        clientSocket.readyState === WebSocket.CONNECTING
+      ) {
+        clientSocket.close(1000, reason || 'Proxy session closed')
+      }
+    } catch {
+      // Ignore close errors
+    }
+
+    try {
+      if (
+        upstreamSocket.readyState === WebSocket.OPEN ||
+        upstreamSocket.readyState === WebSocket.CONNECTING
+      ) {
+        upstreamSocket.close(1000, reason || 'Proxy session closed')
+      }
+    } catch {
+      // Ignore close errors
+    }
+  }
+
+  clientSocket.onmessage = (event) => {
+    const data = typeof event.data === 'string' ? event.data : String(event.data)
+    if (upstreamReady && upstreamSocket.readyState === WebSocket.OPEN) {
+      upstreamSocket.send(data)
+      return
+    }
+    queuedMessages.push(data)
+  }
+
+  clientSocket.onerror = () => closeSockets('Client websocket error')
+  clientSocket.onclose = () => closeSockets()
+
+  upstreamSocket.onopen = () => {
+    upstreamReady = true
+    while (queuedMessages.length > 0) {
+      upstreamSocket.send(queuedMessages.shift()!)
+    }
+  }
+
+  upstreamSocket.onmessage = (event) => {
+    if (clientSocket.readyState === WebSocket.OPEN) {
+      clientSocket.send(event.data)
+    }
+  }
+
+  upstreamSocket.onerror = () => closeSockets('Upstream websocket error')
+  upstreamSocket.onclose = () => closeSockets()
+
+  return response
+}
+
+function buildProxyWebSocketUrl(requestUrl: string): string {
+  const url = new URL(requestUrl)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.toString()
+}
 
 // ── OAuth2 via Service Account JWT ─────────────────────────────────
 
@@ -153,7 +243,6 @@ async function createSignedJwt(
   const encodedPayload = base64UrlEncode(JSON.stringify(payload))
   const signingInput = `${encodedHeader}.${encodedPayload}`
 
-  // Import private key
   const keyData = pemToArrayBuffer(privateKeyPem)
   const cryptoKey = await crypto.subtle.importKey(
     'pkcs8',
@@ -163,7 +252,6 @@ async function createSignedJwt(
     ['sign']
   )
 
-  // Sign
   const signature = await crypto.subtle.sign(
     'RSASSA-PKCS1-v1_5',
     cryptoKey,

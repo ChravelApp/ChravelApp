@@ -1,16 +1,34 @@
-import React from 'react';
-import { BarChart3, CheckSquare, CalendarPlus } from 'lucide-react';
+import React from "react";
+import { BarChart3, CheckSquare, CalendarPlus } from "lucide-react";
 
 interface ActionCardProps {
-  type: 'poll' | 'task' | 'calendar';
+  type: "poll" | "task" | "calendar";
   label: string;
   onAction: () => void;
 }
 
 const actionConfig = {
-  poll: { icon: BarChart3, color: 'blue', buttonText: 'Create Poll' },
-  task: { icon: CheckSquare, color: 'green', buttonText: 'Add to Tasks' },
-  calendar: { icon: CalendarPlus, color: 'purple', buttonText: 'Add to Calendar' },
+  poll: {
+    icon: BarChart3,
+    buttonText: "Create Poll",
+    containerClassName: "bg-blue-500/10 border border-blue-500/30",
+    iconClassName: "text-blue-400",
+    buttonClassName: "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300",
+  },
+  task: {
+    icon: CheckSquare,
+    buttonText: "Add to Tasks",
+    containerClassName: "bg-green-500/10 border border-green-500/30",
+    iconClassName: "text-green-400",
+    buttonClassName: "bg-green-500/20 hover:bg-green-500/30 text-green-300",
+  },
+  calendar: {
+    icon: CalendarPlus,
+    buttonText: "Add to Calendar",
+    containerClassName: "bg-purple-500/10 border border-purple-500/30",
+    iconClassName: "text-purple-400",
+    buttonClassName: "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300",
+  },
 };
 
 export const ActionCard = ({ type, label, onAction }: ActionCardProps) => {
@@ -18,15 +36,15 @@ export const ActionCard = ({ type, label, onAction }: ActionCardProps) => {
   const Icon = config.icon;
 
   return (
-    <div className={`bg-${config.color}-500/10 border border-${config.color}-500/30 rounded-xl p-3`}>
+    <div className={`${config.containerClassName} rounded-xl p-3`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <Icon size={16} className={`text-${config.color}-400 flex-shrink-0`} />
+          <Icon size={16} className={`${config.iconClassName} flex-shrink-0`} />
           <span className="text-slate-300 text-sm truncate">{label}</span>
         </div>
         <button
           onClick={onAction}
-          className={`bg-${config.color}-500/20 hover:bg-${config.color}-500/30 text-${config.color}-300 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors flex-shrink-0`}
+          className={`${config.buttonClassName} text-xs font-medium px-3 py-1.5 rounded-lg transition-colors flex-shrink-0`}
         >
           {config.buttonText}
         </button>

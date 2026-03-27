@@ -1,27 +1,34 @@
-
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { AudioCapture } from '../voice/audioCapture';
-import { AudioPlayback } from '../voice/audioPlayback';
-import { VoiceWebSocketManager, VoiceWSEvents } from '../voice/VoiceWebSocketManager';
-import { AdaptiveVad } from '../voice/adaptiveVad';
-import { CircuitBreaker } from '../voice/circuitBreaker';
-import { BARGE_IN_RMS_THRESHOLD } from '../voice/liveConstants';
+import { useState, useRef, useCallback, useEffect } from "react";
+import { AudioCapture } from "../voice/audioCapture";
+import { AudioPlayback } from "../voice/audioPlayback";
+import {
+  VoiceWebSocketManager,
+  VoiceWSEvents,
+} from "../voice/VoiceWebSocketManager";
+import { AdaptiveVad } from "../voice/adaptiveVad";
+import { CircuitBreaker } from "../voice/circuitBreaker";
+import { BARGE_IN_RMS_THRESHOLD } from "../voice/liveConstants";
 
 // ── Types ──────────────────────────────────────────────────────────
 
 export type VoiceState =
-  | 'idle'
-  | 'requesting_mic'
-  | 'connecting'
-  | 'ready'
-  | 'listening'
-  | 'processing'
-  | 'playing'
-  | 'error';
+  | "idle"
+  | "requesting_mic"
+  | "connecting"
+  | "ready"
+  | "listening"
+  | "processing"
+  | "playing"
+  | "error";
 
 interface SessionConfig {
   edgeFunctionUrl: string;
   userId: string;
+}
+
+interface VoiceSessionData {
+  websocketUrl: string;
+  setupMessage: Record<string, unknown>;
 }
 
 interface UseGeminiLiveReturn {
@@ -33,18 +40,18 @@ interface UseGeminiLiveReturn {
   userRms: number;
   aiRms: number;
   error: string | null;
-  circuitBreakerState: 'closed' | 'open' | 'half-open';
+  circuitBreakerState: "closed" | "open" | "half-open";
 }
 
 // ── Edge function URL ──────────────────────────────────────────────
-const VOICE_SESSION_URL = '/api/gemini-voice-session';
+const VOICE_SESSION_URL = "/api/gemini-voice-session";
 
 // ── Hook ───────────────────────────────────────────────────────────
 
 export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
-  const [state, setState] = useState<VoiceState>('idle');
-  const [userTranscript, setUserTranscript] = useState('');
-  const [aiTranscript, setAiTranscript] = useState('');
+  const [state, setState] = useState<VoiceState>("idle");
+  const [userTranscript, setUserTranscript] = useState("");
+  const [aiTranscript, setAiTranscript] = useState("");
   const [userRms, setUserRms] = useState(0);
   const [aiRms, setAiRms] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +61,7 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
   const wsRef = useRef<VoiceWebSocketManager | null>(null);
   const vadRef = useRef<AdaptiveVad>(new AdaptiveVad());
   const circuitBreakerRef = useRef<CircuitBreaker>(new CircuitBreaker());
-  const stateRef = useRef<VoiceState>('idle');
+  const stateRef = useRef<VoiceState>("idle");
 
   // Keep stateRef in sync for use in callbacks
   useEffect(() => {
@@ -62,7 +69,7 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
   }, [state]);
 
   const [circuitBreakerState, setCircuitBreakerState] = useState(
-    circuitBreakerRef.current.getState()
+    circuitBreakerRef.current.getState(),
   );
 
   // ── Cleanup on unmount ───────────────────────────────────────────
@@ -75,9 +82,7 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
     };
   }, []);
 
-  // ── Stop session ─────────────────────────────────────────────────
-
-  const stopSession = useCallback(() => {
+  const cleanupSessionResources = useCallback(() => {
     captureRef.current?.stop();
     captureRef.current = null;
 
@@ -88,32 +93,43 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
     wsRef.current = null;
 
     vadRef.current.reset();
+  }, []);
 
-    setState('idle');
+  // ── Stop session ─────────────────────────────────────────────────
+
+  const stopSession = useCallback(() => {
+    stateRef.current = "idle";
+    cleanupSessionResources();
+    setState("idle");
     setUserRms(0);
     setAiRms(0);
     setError(null);
-  }, []);
+  }, [cleanupSessionResources]);
 
   // ── Start session ────────────────────────────────────────────────
 
   const startSession = useCallback(async () => {
-    if (stateRef.current !== 'idle') return;
+    if (stateRef.current !== "idle" && stateRef.current !== "error") return;
+    if (stateRef.current === "error") {
+      cleanupSessionResources();
+    }
 
     // Check circuit breaker
     if (!circuitBreakerRef.current.canRequest()) {
-      setError('Too many connection failures. Please try again later.');
+      setError("Too many connection failures. Please try again later.");
       setCircuitBreakerState(circuitBreakerRef.current.getState());
-      setState('error');
+      stateRef.current = "error";
+      setState("error");
       return;
     }
 
     setError(null);
-    setUserTranscript('');
-    setAiTranscript('');
+    setUserTranscript("");
+    setAiTranscript("");
 
     // ── Step 1: Request mic ──────────────────────────────────────
-    setState('requesting_mic');
+    stateRef.current = "requesting_mic";
+    setState("requesting_mic");
 
     const capture = new AudioCapture();
     const playback = new AudioPlayback();
@@ -121,48 +137,52 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
     playbackRef.current = playback;
 
     // ── Step 2: Get session token from edge function ─────────────
-    setState('connecting');
+    stateRef.current = "connecting";
+    setState("connecting");
 
-    let sessionData: {
-      accessToken: string;
-      websocketUrl: string;
-      setupMessage: any;
-    };
+    let sessionData: VoiceSessionData;
 
     try {
       const url = config.edgeFunctionUrl || VOICE_SESSION_URL;
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: config.userId }),
       });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Session request failed: ${response.status}`);
+        throw new Error(
+          errData.error || `Session request failed: ${response.status}`,
+        );
       }
 
       sessionData = await response.json();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create voice session';
+      cleanupSessionResources();
+      const msg =
+        err instanceof Error ? err.message : "Failed to create voice session";
+      stateRef.current = "error";
       setError(msg);
       circuitBreakerRef.current.recordFailure();
       setCircuitBreakerState(circuitBreakerRef.current.getState());
-      setState('error');
+      setState("error");
       return;
     }
 
     // ── Step 3: Connect WebSocket ────────────────────────────────
     const wsEvents: VoiceWSEvents = {
       onSetupComplete: () => {
-        setState('ready');
+        stateRef.current = "ready";
+        setState("ready");
         setCircuitBreakerState(circuitBreakerRef.current.getState());
         startMicCapture();
       },
 
       onAudioData: (base64Audio: string) => {
-        if (stateRef.current !== 'error' && stateRef.current !== 'idle') {
-          setState('playing');
+        if (stateRef.current !== "error" && stateRef.current !== "idle") {
+          stateRef.current = "playing";
+          setState("playing");
           playbackRef.current?.enqueue(base64Audio);
           setAiRms(playbackRef.current?.getRms() || 0);
         }
@@ -174,8 +194,12 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
         }
         if (isFinal) {
           // Turn complete — go back to listening
-          if (stateRef.current === 'playing' || stateRef.current === 'processing') {
-            setState('listening');
+          if (
+            stateRef.current === "playing" ||
+            stateRef.current === "processing"
+          ) {
+            stateRef.current = "listening";
+            setState("listening");
           }
         }
       },
@@ -183,7 +207,8 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
       onInterrupted: () => {
         // Server acknowledged barge-in
         playbackRef.current?.flush();
-        setState('listening');
+        stateRef.current = "listening";
+        setState("listening");
         setAiRms(0);
       },
 
@@ -191,13 +216,16 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
         setError(errMsg);
         circuitBreakerRef.current.recordFailure();
         setCircuitBreakerState(circuitBreakerRef.current.getState());
-        setState('error');
+        stateRef.current = "error";
+        setState("error");
       },
 
       onClose: (_code: number, reason: string) => {
-        if (stateRef.current !== 'idle') {
+        if (reason === "Session ended") return;
+        if (stateRef.current !== "idle") {
           setError(reason);
-          setState('error');
+          stateRef.current = "error";
+          setState("error");
         }
       },
     };
@@ -205,7 +233,7 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
     const ws = new VoiceWebSocketManager(wsEvents, circuitBreakerRef.current);
     wsRef.current = ws;
 
-    ws.connect(sessionData.websocketUrl, sessionData.accessToken, sessionData.setupMessage);
+    ws.connect(sessionData.websocketUrl, sessionData.setupMessage);
 
     // ── Mic capture with VAD ─────────────────────────────────────
     const startMicCapture = async () => {
@@ -217,13 +245,18 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
           vadRef.current.feedFrame(rms);
 
           // Barge-in detection: user speaking during AI playback
-          if (playbackRef.current?.isPlaying() && rms > BARGE_IN_RMS_THRESHOLD) {
+          if (
+            playbackRef.current?.isPlaying() &&
+            rms > BARGE_IN_RMS_THRESHOLD
+          ) {
             playbackRef.current.flush();
             setAiRms(0);
             // Send activity interruption signal
             wsRef.current?.sendClientContent({
               turn_complete: false,
-              turns: [{ role: 'user', parts: [{ text: '[user interrupted]' }] }],
+              turns: [
+                { role: "user", parts: [{ text: "[user interrupted]" }] },
+              ],
             });
           }
 
@@ -232,23 +265,29 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
             wsRef.current?.sendAudio(base64Pcm);
 
             if (vadRef.current.isCalibrated() && vadRef.current.isSpeaking()) {
-              if (stateRef.current === 'ready' || stateRef.current === 'listening') {
-                setState('listening');
+              if (
+                stateRef.current === "ready" ||
+                stateRef.current === "listening"
+              ) {
+                stateRef.current = "listening";
+                setState("listening");
               }
             }
           }
         });
 
-        setState('listening');
+        stateRef.current = "listening";
+        setState("listening");
       } catch (err) {
+        cleanupSessionResources();
         const msg =
-          err instanceof Error ? err.message : 'Microphone access denied';
+          err instanceof Error ? err.message : "Microphone access denied";
+        stateRef.current = "error";
         setError(msg);
-        setState('error');
-        ws.close();
+        setState("error");
       }
     };
-  }, [config.edgeFunctionUrl, config.userId, stopSession]);
+  }, [cleanupSessionResources, config.edgeFunctionUrl, config.userId]);
 
   return {
     state,
