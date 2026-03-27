@@ -3,6 +3,8 @@ import { useState, useEffect, createContext, useContext } from 'react';
 
 interface User {
   id: string;
+  /** Present when signed in via Supabase; used for authenticated edge function calls (e.g. voice session). */
+  sessionAccessToken?: string | null;
   email?: string;
   phone?: string;
   displayName: string;
