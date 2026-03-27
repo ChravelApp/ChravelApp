@@ -7,6 +7,10 @@ import { GeminiAIService, TripContext } from '../services/geminiAI';
 import { ChatMessages } from './chat/ChatMessages';
 import { ChatInput } from './chat/ChatInput';
 import { GeminiPlusUpgrade } from './chat/GeminiPlusUpgrade';
+import { VoiceButton } from './chat/VoiceButton';
+import { VoiceLiveInline } from './chat/VoiceLiveInline';
+import { useGeminiLive } from '../hooks/useGeminiLive';
+import { voiceFeatureFlags } from '../config/voiceFeatureFlags';
 
 interface GeminiAIChatProps {
   tripId: string;
@@ -22,6 +26,13 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [aiStatus, setAiStatus] = useState<'connected' | 'fallback' | 'error'>('connected');
+
+  // Voice mode
+  const voice = useGeminiLive({
+    edgeFunctionUrl: '/api/gemini-voice-session',
+    userId: tripId, // Using tripId as user identifier for now
+  });
+  const isVoiceActive = voice.state !== 'idle' && voice.state !== 'error';
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
@@ -143,8 +154,18 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
             </div>
           </div>
         </div>
-        <div className="bg-gradient-to-r from-glass-orange/20 to-glass-yellow/20 px-3 py-1 rounded-full">
-          <span className="text-glass-orange text-sm font-medium">PLUS</span>
+        <div className="flex items-center gap-2">
+          {voiceFeatureFlags.isVoiceLiveEnabled && (
+            <VoiceButton
+              state={voice.state}
+              circuitBreakerState={voice.circuitBreakerState}
+              onStart={voice.startSession}
+              onStop={voice.stopSession}
+            />
+          )}
+          <div className="bg-gradient-to-r from-glass-orange/20 to-glass-yellow/20 px-3 py-1 rounded-full">
+            <span className="text-glass-orange text-sm font-medium">PLUS</span>
+          </div>
         </div>
       </div>
 
@@ -169,14 +190,26 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
         <ChatMessages messages={messages} isTyping={isTyping} />
       </div>
 
-      <ChatInput
-        inputMessage={inputMessage}
-        onInputChange={setInputMessage}
-        onSendMessage={handleSendMessage}
-        onKeyPress={handleKeyPress}
-        apiKey=""
-        isTyping={isTyping}
-      />
+      {isVoiceActive ? (
+        <VoiceLiveInline
+          state={voice.state}
+          userRms={voice.userRms}
+          aiRms={voice.aiRms}
+          userTranscript={voice.userTranscript}
+          aiTranscript={voice.aiTranscript}
+          error={voice.error}
+          onStop={voice.stopSession}
+        />
+      ) : (
+        <ChatInput
+          inputMessage={inputMessage}
+          onInputChange={setInputMessage}
+          onSendMessage={handleSendMessage}
+          onKeyPress={handleKeyPress}
+          apiKey=""
+          isTyping={isTyping}
+        />
+      )}
     </div>
   );
 };

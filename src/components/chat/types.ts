@@ -30,3 +30,13 @@ export interface GeminiAPIConfig {
   topP: number;
   maxOutputTokens: number;
 }
+
+export type VoiceState =
+  | 'idle'
+  | 'requesting_mic'
+  | 'connecting'
+  | 'ready'
+  | 'listening'
+  | 'processing'
+  | 'playing'
+  | 'error';
