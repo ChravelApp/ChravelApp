@@ -3,10 +3,14 @@ import React, { useState } from 'react';
 import { Sparkles, WifiOff, Wifi, AlertCircle } from 'lucide-react';
 import { useConsumerSubscription } from '../hooks/useConsumerSubscription';
 import { TripPreferences } from '../types/consumer';
-import { OpenAIService, TripContext } from '../services/openAI';
+import { GeminiAIService, TripContext } from '../services/geminiAI';
 import { ChatMessages } from './chat/ChatMessages';
 import { ChatInput } from './chat/ChatInput';
 import { GeminiPlusUpgrade } from './chat/GeminiPlusUpgrade';
+import { VoiceButton } from './chat/VoiceButton';
+import { VoiceLiveInline } from './chat/VoiceLiveInline';
+import { useGeminiLive } from '../hooks/useGeminiLive';
+import { voiceFeatureFlags } from '../config/voiceFeatureFlags';
 
 interface GeminiAIChatProps {
   tripId: string;
@@ -14,13 +18,7 @@ interface GeminiAIChatProps {
   preferences?: TripPreferences;
 }
 
-interface ChatMessage {
-  id: string;
-  type: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  isFromFallback?: boolean;
-}
+import { ChatMessage } from './chat/types';
 
 export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProps) => {
   const { isPlus } = useConsumerSubscription();
@@ -28,6 +26,13 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [aiStatus, setAiStatus] = useState<'connected' | 'fallback' | 'error'>('connected');
+
+  // Voice mode
+  const voice = useGeminiLive({
+    edgeFunctionUrl: '/api/gemini-voice-session',
+    userId: tripId, // Using tripId as user identifier for now
+  });
+  const isVoiceActive = voice.state !== 'idle' && voice.state !== 'error';
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
@@ -54,8 +59,8 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
         isPro: false
       };
 
-      const context = OpenAIService.buildTripContext(tripContext);
-      const response = await OpenAIService.queryOpenAI(
+      const context = GeminiAIService.buildTripContext(tripContext);
+      const response = await GeminiAIService.queryGemini(
         `${context}\n\nUSER QUESTION: ${inputMessage}`,
         {
         temperature: 0.7,
@@ -75,6 +80,7 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
         type: 'assistant',
         content: response.content,
         timestamp: new Date().toISOString(),
+        groundingCards: response.groundingCards,
         isFromFallback: response.isFromFallback
       };
       
@@ -148,12 +154,22 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
             </div>
           </div>
         </div>
-        <div className="bg-gradient-to-r from-glass-orange/20 to-glass-yellow/20 px-3 py-1 rounded-full">
-          <span className="text-glass-orange text-sm font-medium">PLUS</span>
+        <div className="flex items-center gap-2">
+          {voiceFeatureFlags.isVoiceLiveEnabled && (
+            <VoiceButton
+              state={voice.state}
+              circuitBreakerState={voice.circuitBreakerState}
+              onStart={voice.startSession}
+              onStop={voice.stopSession}
+            />
+          )}
+          <div className="bg-gradient-to-r from-glass-orange/20 to-glass-yellow/20 px-3 py-1 rounded-full">
+            <span className="text-glass-orange text-sm font-medium">PLUS</span>
+          </div>
         </div>
       </div>
 
-      {basecamp && (
+      {!isVoiceActive && basecamp && (
         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-3 mb-4">
           <p className="text-green-300 text-sm">
             📍 Basecamp: {basecamp.name} • {basecamp.address}
@@ -161,7 +177,7 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
         </div>
       )}
 
-      {aiStatus === 'fallback' && (
+      {!isVoiceActive && aiStatus === 'fallback' && (
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 mb-4">
           <p className="text-yellow-300 text-sm flex items-center gap-2">
             <WifiOff size={14} />
@@ -170,18 +186,32 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
         </div>
       )}
 
-      <div className="space-y-4 mb-6 max-h-80 overflow-y-auto">
-        <ChatMessages messages={messages} isTyping={isTyping} />
-      </div>
+      {isVoiceActive ? (
+        <VoiceLiveInline
+          state={voice.state}
+          userRms={voice.userRms}
+          aiRms={voice.aiRms}
+          userTranscript={voice.userTranscript}
+          aiTranscript={voice.aiTranscript}
+          error={voice.error}
+          onStop={voice.stopSession}
+        />
+      ) : (
+        <>
+          <div className="space-y-4 mb-6 max-h-80 overflow-y-auto">
+            <ChatMessages messages={messages} isTyping={isTyping} />
+          </div>
 
-      <ChatInput
-        inputMessage={inputMessage}
-        onInputChange={setInputMessage}
-        onSendMessage={handleSendMessage}
-        onKeyPress={handleKeyPress}
-        apiKey=""
-        isTyping={isTyping}
-      />
+          <ChatInput
+            inputMessage={inputMessage}
+            onInputChange={setInputMessage}
+            onSendMessage={handleSendMessage}
+            onKeyPress={handleKeyPress}
+            apiKey=""
+            isTyping={isTyping}
+          />
+        </>
+      )}
     </div>
   );
 };

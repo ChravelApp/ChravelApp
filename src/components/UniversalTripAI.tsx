@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Send, Sparkles, MessageCircle, ExternalLink, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { useConsumerSubscription } from '../hooks/useConsumerSubscription';
 import { TripPreferences } from '../types/consumer';
-import { OpenAIService, TripContext } from '../services/openAI';
+import { GeminiAIService, TripContext } from '../services/geminiAI';
 import {
   Sheet,
   SheetContent,
@@ -18,12 +18,16 @@ interface UniversalTripAIProps {
   tripContext: TripContext;
 }
 
+import { GroundingCard } from '../services/geminiAI';
+import { MarkdownMessage } from './chat/MarkdownMessage';
+
 interface ChatMessage {
   id: string;
   type: 'user' | 'assistant';
   content: string;
   timestamp: string;
   sources?: Array<{ title: string; url: string; snippet: string }>;
+  groundingCards?: GroundingCard[];
   isFromFallback?: boolean;
 }
 
@@ -53,8 +57,8 @@ export const UniversalTripAI = ({ tripContext }: UniversalTripAIProps) => {
     setIsTyping(true);
 
     try {
-      const context = OpenAIService.buildTripContext(tripContext);
-      const response = await OpenAIService.queryOpenAI(
+      const context = GeminiAIService.buildTripContext(tripContext);
+      const response = await GeminiAIService.queryGemini(
         `${context}\n\nUSER QUESTION: ${inputMessage}`,
         {
           temperature: 0.3,
@@ -75,6 +79,7 @@ export const UniversalTripAI = ({ tripContext }: UniversalTripAIProps) => {
         content: response.content,
         timestamp: new Date().toISOString(),
         sources: response.sources,
+        groundingCards: response.groundingCards,
         isFromFallback: response.isFromFallback
       };
       
@@ -217,7 +222,11 @@ export const UniversalTripAI = ({ tripContext }: UniversalTripAIProps) => {
                       ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
                       : `${message.isFromFallback ? 'bg-yellow-900/20 border border-yellow-500/30' : 'bg-gray-800 border border-gray-700'} text-gray-300`
                   }`}>
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.type === 'user' ? (
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    ) : (
+                      <MarkdownMessage content={message.content} />
+                    )}
                     {message.isFromFallback && (
                       <p className="text-xs text-yellow-400 mt-2 flex items-center gap-1">
                         <WifiOff size={10} />
