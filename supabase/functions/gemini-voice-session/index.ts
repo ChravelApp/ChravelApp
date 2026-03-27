@@ -27,6 +27,40 @@ serve(async (req) => {
       )
     }
 
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const jwt = authHeader.replace(/^Bearer\s+/i, '').trim()
+
+    if (jwt) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+      if (!supabaseUrl || !anonKey) {
+        return new Response(
+          JSON.stringify({ error: 'Server auth configuration error' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      const supabase = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      })
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(jwt)
+
+      if (authError || !user?.id) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      if (user_id !== user.id) {
+        return new Response(
+          JSON.stringify({ error: 'user_id does not match authenticated user' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // ── Rate limiting ────────────────────────────────────────────
     const now = Date.now()
     const userSessions = sessionTimestamps.get(user_id) || []

@@ -17,6 +17,8 @@ export interface VoiceWSEvents {
   onSetupComplete: () => void;
   onAudioData: (base64Audio: string) => void;
   onTranscript: (text: string, isFinal: boolean) => void;
+  /** User speech as text (Live API inputTranscription / serverContent.input_transcription) */
+  onUserTranscript?: (text: string, isFinal: boolean) => void;
   onInterrupted: () => void;
   onError: (error: string) => void;
   onClose: (code: number, reason: string) => void;
@@ -28,6 +30,19 @@ interface SetupMessage {
     generation_config?: Record<string, unknown>;
     system_instruction?: { parts: { text: string }[] };
   };
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object';
+}
+
+function readTranscriptionChunk(
+  v: unknown
+): { text: string; finished: boolean } | null {
+  if (!isRecord(v)) return null;
+  const text = v.text;
+  if (typeof text !== 'string' || !text) return null;
+  return { text, finished: Boolean(v.finished) };
 }
 
 // ── Manager ────────────────────────────────────────────────────────
@@ -150,11 +165,25 @@ export class VoiceWebSocketManager {
   // ── Message handling ───────────────────────────────────────────
 
   private handleMessage(raw: string): void {
-    let msg: Record<string, any>;
+    let parsed: unknown;
     try {
-      msg = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch {
       return; // Ignore non-JSON
+    }
+    if (!isRecord(parsed)) return;
+    const msg = parsed;
+
+    // Top-level speech transcriptions (Vertex Live / BidiGenerateContent)
+    const topIn = readTranscriptionChunk(msg.inputTranscription ?? msg.input_transcription);
+    if (topIn) {
+      this.events.onUserTranscript?.(topIn.text, topIn.finished);
+      return;
+    }
+    const topOut = readTranscriptionChunk(msg.outputTranscription ?? msg.output_transcription);
+    if (topOut) {
+      this.events.onTranscript(topOut.text, topOut.finished);
+      return;
     }
 
     // Setup complete
@@ -172,7 +201,7 @@ export class VoiceWebSocketManager {
     }
 
     // Server content (audio and/or text)
-    if (msg.serverContent) {
+    if (isRecord(msg.serverContent)) {
       const content = msg.serverContent;
 
       // Check for interruption (barge-in from server side)
@@ -181,15 +210,37 @@ export class VoiceWebSocketManager {
         return;
       }
 
+      const inTx = readTranscriptionChunk(
+        content.input_transcription ?? content.inputTranscription
+      );
+      if (inTx) {
+        this.events.onUserTranscript?.(inTx.text, inTx.finished);
+      }
+
+      const outTx = readTranscriptionChunk(
+        content.output_transcription ?? content.outputTranscription
+      );
+      if (outTx) {
+        this.events.onTranscript(outTx.text, outTx.finished);
+      }
+
       // Model turn content
-      if (content.modelTurn?.parts) {
-        for (const part of content.modelTurn.parts) {
-          // Audio data
-          if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
-            this.events.onAudioData(part.inlineData.data);
+      const modelTurn = isRecord(content.modelTurn) ? content.modelTurn : null;
+      const parts = modelTurn && Array.isArray(modelTurn.parts) ? modelTurn.parts : null;
+      if (parts) {
+        for (const part of parts) {
+          if (!isRecord(part)) continue;
+          const inlineData = isRecord(part.inlineData) ? part.inlineData : null;
+          const mimeType = inlineData?.mimeType;
+          const data = inlineData?.data;
+          if (
+            typeof mimeType === 'string' &&
+            mimeType.startsWith('audio/') &&
+            typeof data === 'string'
+          ) {
+            this.events.onAudioData(data);
           }
-          // Text transcript
-          if (part.text) {
+          if (typeof part.text === 'string' && part.text) {
             this.events.onTranscript(part.text, false);
           }
         }

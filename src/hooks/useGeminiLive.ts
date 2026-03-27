@@ -2,7 +2,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { AudioCapture } from '../voice/audioCapture';
 import { AudioPlayback } from '../voice/audioPlayback';
-import { VoiceWebSocketManager, VoiceWSEvents } from '../voice/VoiceWebSocketManager';
+import {
+  VoiceWebSocketManager,
+  VoiceWSEvents,
+} from '../voice/VoiceWebSocketManager';
 import { AdaptiveVad } from '../voice/adaptiveVad';
 import { CircuitBreaker } from '../voice/circuitBreaker';
 import { BARGE_IN_RMS_THRESHOLD } from '../voice/liveConstants';
@@ -19,9 +22,21 @@ export type VoiceState =
   | 'playing'
   | 'error';
 
+/** Shape returned by gemini-voice-session edge function */
+interface VoiceSessionSetupPayload {
+  setup: {
+    model: string;
+    generation_config?: Record<string, unknown>;
+    system_instruction?: { parts: { text: string }[] };
+  };
+}
+
 interface SessionConfig {
   edgeFunctionUrl: string;
+  /** Authenticated account id (rate limits + server verification). Do not use trip id. */
   userId: string;
+  /** Optional Supabase JWT; when set, sent as Authorization so the edge function can verify the caller. */
+  accessToken?: string | null;
 }
 
 interface UseGeminiLiveReturn {
@@ -126,14 +141,19 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
     let sessionData: {
       accessToken: string;
       websocketUrl: string;
-      setupMessage: any;
+      setupMessage: VoiceSessionSetupPayload;
     };
 
     try {
       const url = config.edgeFunctionUrl || VOICE_SESSION_URL;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (config.accessToken) {
+        headers.Authorization = `Bearer ${config.accessToken}`;
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ user_id: config.userId }),
       });
 
@@ -177,6 +197,12 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
           if (stateRef.current === 'playing' || stateRef.current === 'processing') {
             setState('listening');
           }
+        }
+      },
+
+      onUserTranscript: (text: string, _isFinal: boolean) => {
+        if (text) {
+          setUserTranscript((prev) => prev + text);
         }
       },
 
@@ -248,7 +274,7 @@ export function useGeminiLive(config: SessionConfig): UseGeminiLiveReturn {
         ws.close();
       }
     };
-  }, [config.edgeFunctionUrl, config.userId, stopSession]);
+  }, [config.edgeFunctionUrl, config.userId, config.accessToken]);
 
   return {
     state,

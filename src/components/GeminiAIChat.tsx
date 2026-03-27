@@ -11,6 +11,7 @@ import { VoiceButton } from './chat/VoiceButton';
 import { VoiceLiveInline } from './chat/VoiceLiveInline';
 import { useGeminiLive } from '../hooks/useGeminiLive';
 import { voiceFeatureFlags } from '../config/voiceFeatureFlags';
+import { useAuth } from '../hooks/useAuth';
 
 interface GeminiAIChatProps {
   tripId: string;
@@ -22,6 +23,7 @@ import { ChatMessage } from './chat/types';
 
 export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProps) => {
   const { isPlus } = useConsumerSubscription();
+  const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -30,7 +32,8 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
   // Voice mode
   const voice = useGeminiLive({
     edgeFunctionUrl: '/api/gemini-voice-session',
-    userId: tripId, // Using tripId as user identifier for now
+    userId: user?.id ?? 'anonymous',
+    accessToken: user?.sessionAccessToken ?? null,
   });
   const isVoiceActive = voice.state !== 'idle' && voice.state !== 'error';
 
