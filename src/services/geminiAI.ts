@@ -1,12 +1,27 @@
 import { TripPreferences } from '../types/consumer';
 import { ProTripData } from '../types/pro';
 
-export interface OpenAIConfig {
+export interface GeminiAIConfig {
   temperature?: number;
   maxTokens?: number;
 }
 
-export interface OpenAIResponse {
+export interface GroundingCard {
+  type: 'flight' | 'hotel' | 'place' | 'link';
+  title: string;
+  url: string;
+  imageUrl?: string;
+  snippet?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface ActionCard {
+  type: 'poll' | 'task' | 'calendar';
+  label: string;
+  data: Record<string, any>;
+}
+
+export interface GeminiAIResponse {
   content: string;
   sources?: Array<{
     title: string;
@@ -14,6 +29,8 @@ export interface OpenAIResponse {
     snippet: string;
   }>;
   citations?: string[];
+  groundingCards?: GroundingCard[];
+  actions?: ActionCard[];
   isFromFallback?: boolean;
 }
 
@@ -34,13 +51,13 @@ export interface TripContext {
   proData?: ProTripData;
 }
 
-export class OpenAIService {
-  private static readonly ENDPOINT = '/api/openai-chat';
+export class GeminiAIService {
+  private static readonly ENDPOINT = '/api/gemini-chat';
 
   static buildTripContext(tripContext: TripContext): string {
     const contextSize = tripContext.isPro ? 8000 : 2000;
 
-    let context = `You are TripSync AI, an intelligent travel assistant with deep knowledge of this specific trip. Answer questions concisely and provide actionable insights.
+    let context = `You are TripSync AI, an intelligent travel assistant with deep knowledge of this specific trip. Answer questions concisely and provide actionable insights. Use markdown formatting for readability: bold for emphasis, bullet lists for options, and include hyperlinks where relevant.
 
 TRIP OVERVIEW:
 - Title: ${tripContext.title}
@@ -113,13 +130,34 @@ SAVED LINKS:`;
     return context;
   }
 
-  static async queryOpenAI(prompt: string, config: OpenAIConfig = {}): Promise<OpenAIResponse> {
+  static parseGroundingCards(groundingMetadata: any): GroundingCard[] {
+    if (!groundingMetadata?.groundingChunks) return [];
+
+    return groundingMetadata.groundingChunks
+      .filter((chunk: any) => chunk.web)
+      .map((chunk: any) => ({
+        type: 'link' as const,
+        title: chunk.web.title || '',
+        url: chunk.web.uri || '',
+        snippet: '',
+      }));
+  }
+
+  static async queryGemini(prompt: string, config: GeminiAIConfig = {}): Promise<GeminiAIResponse> {
     const response = await fetch(this.ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ prompt, config })
+      body: JSON.stringify({
+        message: prompt,
+        config: {
+          temperature: config.temperature ?? 0.3,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: config.maxTokens ?? 1024,
+        }
+      })
     });
 
     if (!response.ok) {
@@ -128,10 +166,13 @@ SAVED LINKS:`;
     }
 
     const data = await response.json();
+    const groundingCards = this.parseGroundingCards(data.groundingMetadata);
+
     return {
       content: data.response || data.content || '',
       sources: data.sources || [],
       citations: data.citations || [],
+      groundingCards,
       isFromFallback: false,
     };
   }
@@ -152,7 +193,7 @@ Provide a comprehensive sentiment analysis including:
 
 Format your response as a detailed analysis.`;
 
-    const response = await this.queryOpenAI(prompt, { temperature: 0.2 });
+    const response = await this.queryGemini(prompt, { temperature: 0.2 });
 
     const content = response.content;
     const score = this.extractScoreFromText(content);
@@ -178,7 +219,7 @@ ${context}
 
 Please create a natural, conversational script that would work well as an audio overview of this trip. Include key details, highlights, and practical information that travelers would want to know.`;
 
-    const response = await this.queryOpenAI(prompt, { temperature: 0.4, maxTokens: 1000 });
+    const response = await this.queryGemini(prompt, { temperature: 0.4, maxTokens: 1000 });
 
     return {
       summary: response.content,

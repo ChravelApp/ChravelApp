@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Use the latest Gemini Flash model - update this string when newer models are available
+// Check https://ai.google.dev/gemini-api/docs/models for the latest model IDs
+const GEMINI_MODEL = 'gemini-2.5-flash'
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -14,32 +18,41 @@ serve(async (req) => {
   try {
     const { message, tripContext, config } = await req.json()
 
-    // Get the Gemini API key from environment variables
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
       throw new Error('Gemini API key not configured')
     }
 
-    // Call Gemini API
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + apiKey, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: message
-          }]
-        }],
-        generationConfig: config || {
-          temperature: 0.3,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1024,
-        }
-      }),
-    })
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: message
+            }]
+          }],
+          tools: [{
+            google_search_retrieval: {
+              dynamic_retrieval_config: {
+                mode: "MODE_DYNAMIC",
+                dynamic_threshold: 0.3
+              }
+            }
+          }],
+          generationConfig: config || {
+            temperature: 0.3,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
+          }
+        }),
+      }
+    )
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
@@ -47,15 +60,20 @@ serve(async (req) => {
     }
 
     const data = await response.json()
-    
+
     if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
       throw new Error('Invalid response format from Gemini API')
     }
-    
-    const aiResponse = data.candidates[0].content.parts[0].text
+
+    const candidate = data.candidates[0]
+    const aiResponse = candidate.content.parts[0].text
+    const groundingMetadata = candidate.groundingMetadata || null
 
     return new Response(
-      JSON.stringify({ response: aiResponse }),
+      JSON.stringify({
+        response: aiResponse,
+        groundingMetadata,
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,

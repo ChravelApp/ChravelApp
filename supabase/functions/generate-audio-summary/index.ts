@@ -58,15 +58,18 @@ serve(async (req) => {
     }
 
     // Get API keys from environment
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
     const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY')
 
-    if (!openaiApiKey && !elevenLabsApiKey) {
-      throw new Error('No TTS API keys configured')
+    if (!geminiApiKey) {
+      throw new Error('Gemini API key not configured')
+    }
+    if (!elevenLabsApiKey) {
+      throw new Error('ElevenLabs API key not configured for TTS')
     }
 
-    // Generate audio summary using Podcastfy approach
-    const result = await generateAudioSummary(url, openaiApiKey, elevenLabsApiKey)
+    // Generate audio summary using Gemini for summarization + ElevenLabs for TTS
+    const result = await generateAudioSummary(url, geminiApiKey, elevenLabsApiKey)
 
     // Generate unique file key
     const fileKey = `${user_id}/${trip_id || 'general'}/${crypto.randomUUID()}.mp3`
@@ -138,14 +141,14 @@ serve(async (req) => {
   }
 })
 
-async function generateAudioSummary(url: string, openaiKey?: string, elevenLabsKey?: string) {
+async function generateAudioSummary(url: string, geminiKey: string, elevenLabsKey: string) {
   try {
-    // Step 1: Extract and summarize content from URL
+    // Step 1: Extract and summarize content from URL using Gemini
     const content = await extractContentFromUrl(url)
-    const summary = await generateSummaryText(content, openaiKey!)
-    
-    // Step 2: Convert summary to speech
-    const audioBuffer = await generateSpeech(summary, elevenLabsKey || openaiKey!)
+    const summary = await generateSummaryText(content, geminiKey)
+
+    // Step 2: Convert summary to speech using ElevenLabs
+    const audioBuffer = await generateSpeech(summary, elevenLabsKey)
     
     // Calculate approximate duration (rough estimate: 150 words per minute)
     const wordCount = summary.split(' ').length
@@ -191,56 +194,46 @@ async function extractContentFromUrl(url: string): Promise<string> {
   }
 }
 
-async function generateSummaryText(content: string, openaiKey: string): Promise<string> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openaiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert content summarizer. Create an engaging, conversational audio summary that sounds natural when spoken aloud. Focus on key insights, interesting details, and practical takeaways. Keep it concise but informative, suitable for a 2-3 minute audio overview.'
-        },
-        {
-          role: 'user',
-          content: `Please create an engaging audio summary of this content:\n\n${content}`
+// Use the latest Gemini Flash model - update when newer models are available
+const GEMINI_MODEL = 'gemini-2.5-flash'
+
+async function generateSummaryText(content: string, geminiKey: string): Promise<string> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `You are an expert content summarizer. Create an engaging, conversational audio summary that sounds natural when spoken aloud. Focus on key insights, interesting details, and practical takeaways. Keep it concise but informative, suitable for a 2-3 minute audio overview.\n\nPlease create an engaging audio summary of this content:\n\n${content}`
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000,
         }
-      ],
-      max_tokens: 1000,
-      temperature: 0.7
-    })
-  })
+      }),
+    }
+  )
 
   if (!response.ok) {
-    throw new Error(`OpenAI API error: ${response.status}`)
+    throw new Error(`Gemini API error: ${response.status}`)
   }
 
   const data = await response.json()
-  return data.choices[0]?.message?.content || 'Summary generation failed'
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Summary generation failed'
 }
 
-async function generateSpeech(text: string, apiKey: string): Promise<Uint8Array> {
-  // Try ElevenLabs first if key is available, then fallback to OpenAI
-  if (apiKey.startsWith('sk_')) {
-    // ElevenLabs API key pattern
-    return generateElevenLabsSpeech(text, apiKey)
-  } else {
-    // OpenAI API key pattern
-    return generateOpenAISpeech(text, apiKey)
-  }
-}
-
-async function generateElevenLabsSpeech(text: string, apiKey: string): Promise<Uint8Array> {
+async function generateSpeech(text: string, elevenLabsKey: string): Promise<Uint8Array> {
   const voiceId = 'EXAVITQu4vr4xnSDxMaL' // Sarah voice
-  
+
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
-      'xi-api-key': apiKey,
+      'xi-api-key': elevenLabsKey,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -257,28 +250,6 @@ async function generateElevenLabsSpeech(text: string, apiKey: string): Promise<U
 
   if (!response.ok) {
     throw new Error(`ElevenLabs API error: ${response.status}`)
-  }
-
-  return new Uint8Array(await response.arrayBuffer())
-}
-
-async function generateOpenAISpeech(text: string, apiKey: string): Promise<Uint8Array> {
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'tts-1',
-      input: text,
-      voice: 'alloy',
-      response_format: 'mp3'
-    })
-  })
-
-  if (!response.ok) {
-    throw new Error(`OpenAI TTS API error: ${response.status}`)
   }
 
   return new Uint8Array(await response.arrayBuffer())

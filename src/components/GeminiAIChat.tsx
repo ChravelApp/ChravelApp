@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Sparkles, WifiOff, Wifi, AlertCircle } from 'lucide-react';
 import { useConsumerSubscription } from '../hooks/useConsumerSubscription';
 import { TripPreferences } from '../types/consumer';
-import { OpenAIService, TripContext } from '../services/openAI';
+import { GeminiAIService, TripContext } from '../services/geminiAI';
 import { ChatMessages } from './chat/ChatMessages';
 import { ChatInput } from './chat/ChatInput';
 import { GeminiPlusUpgrade } from './chat/GeminiPlusUpgrade';
@@ -14,13 +14,7 @@ interface GeminiAIChatProps {
   preferences?: TripPreferences;
 }
 
-interface ChatMessage {
-  id: string;
-  type: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  isFromFallback?: boolean;
-}
+import { ChatMessage } from './chat/types';
 
 export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProps) => {
   const { isPlus } = useConsumerSubscription();
@@ -54,8 +48,8 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
         isPro: false
       };
 
-      const context = OpenAIService.buildTripContext(tripContext);
-      const response = await OpenAIService.queryOpenAI(
+      const context = GeminiAIService.buildTripContext(tripContext);
+      const response = await GeminiAIService.queryGemini(
         `${context}\n\nUSER QUESTION: ${inputMessage}`,
         {
         temperature: 0.7,
@@ -75,6 +69,7 @@ export const GeminiAIChat = ({ tripId, basecamp, preferences }: GeminiAIChatProp
         type: 'assistant',
         content: response.content,
         timestamp: new Date().toISOString(),
+        groundingCards: response.groundingCards,
         isFromFallback: response.isFromFallback
       };
       

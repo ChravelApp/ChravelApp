@@ -1,5 +1,5 @@
 
-import { OpenAIService } from './openAI';
+import { GeminiAIService } from './geminiAI';
 
 export interface ReviewAnalysisResult {
   text: string;
@@ -24,7 +24,7 @@ export interface AiFeatureResponse<T> {
 export class AiFeatureService {
   static async analyzeReviews(url: string): Promise<AiFeatureResponse<ReviewAnalysisResult>> {
     try {
-      const result = await OpenAIService.analyzeReviews(url);
+      const result = await GeminiAIService.analyzeReviews(url);
       return { success: true, data: result };
     } catch (error) {
       console.error('Review Analysis Error:', error);
@@ -46,7 +46,7 @@ export class AiFeatureService {
         isPro: false
       };
 
-      const result = await OpenAIService.generateAudioSummary(tripContext);
+      const result = await GeminiAIService.generateAudioSummary(tripContext);
       
       return { 
         success: true, 
