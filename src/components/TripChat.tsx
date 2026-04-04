@@ -1,8 +1,10 @@
 
-import React, { useState } from 'react';
-import { Send, Search, MessageCircle, User, Settings } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Send, Search, MessageCircle, User, Settings, Loader2 } from 'lucide-react';
 import { useMessages } from '../hooks/useMessages';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { getStreamClient } from '../services/streamChat';
 
 interface TripChatProps {
   groupChatEnabled?: boolean;
@@ -10,12 +12,28 @@ interface TripChatProps {
 
 export const TripChat = ({ groupChatEnabled = true }: TripChatProps) => {
   const { tripId, eventId } = useParams();
-  const { getMessagesForTrip, addMessage, getTripUnreadCount } = useMessages();
+  const { user } = useAuth();
+  const currentTripId = tripId || eventId || 'default-trip';
+
+  // In development the GetStream dashboard must have dev tokens enabled.
+  // In production, replace this with a token fetched from the `stream-token` edge function.
+  const streamToken = useMemo(
+    () => (user ? getStreamClient().devToken(user.id) : undefined),
+    [user?.id]
+  );
+
+  const { messages, loading, addMessage, getTripUnreadCount } = useMessages({
+    tripId: currentTripId,
+    userId: user?.id,
+    userName: user?.displayName,
+    userAvatar: user?.avatar,
+    streamToken,
+  });
+
   const [message, setMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const currentTripId = tripId || eventId || 'default-trip';
-  const tripMessages = getMessagesForTrip(currentTripId);
+  const tripMessages = messages.filter((m) => m.tripId === currentTripId);
   const unreadCount = getTripUnreadCount(currentTripId);
 
   const filteredMessages = tripMessages.filter(msg =>
@@ -23,9 +41,9 @@ export const TripChat = ({ groupChatEnabled = true }: TripChatProps) => {
     msg.senderName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!message.trim() || !groupChatEnabled) return;
-    addMessage(message, currentTripId);
+    await addMessage(message, currentTripId);
     setMessage('');
   };
 
@@ -93,7 +111,11 @@ export const TripChat = ({ groupChatEnabled = true }: TripChatProps) => {
 
       {/* Messages */}
       <div className="space-y-4 mb-6 max-h-96 overflow-y-auto">
-        {filteredMessages.length > 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={32} className="text-gray-500 animate-spin" />
+          </div>
+        ) : filteredMessages.length > 0 ? (
           filteredMessages.map((msg) => (
             <div key={msg.id} className="flex items-start gap-3">
               <img

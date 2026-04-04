@@ -1,107 +1,130 @@
-
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { Channel, MessageResponse } from 'stream-chat';
+import { getTripChannel, connectStreamUser, disconnectStreamUser } from '../services/streamChat';
 import { Message } from '../types/messaging';
-import { proTripMockData } from '../data/proTripMockData';
 
-export const useMessages = () => {
+function toMessage(msg: MessageResponse, tripId: string): Message {
+  return {
+    id: msg.id,
+    content: typeof msg.text === 'string' ? msg.text : '',
+    senderId: msg.user?.id ?? 'unknown',
+    senderName: msg.user?.name ?? msg.user?.id ?? 'Unknown',
+    senderAvatar: msg.user?.image as string | undefined,
+    timestamp: typeof msg.created_at === 'string' ? msg.created_at : new Date().toISOString(),
+    isRead: true,
+    tripId,
+  };
+}
+
+interface UseMessagesOptions {
+  tripId?: string;
+  userId?: string;
+  userName?: string;
+  userAvatar?: string;
+  streamToken?: string;
+}
+
+export const useMessages = (options?: UseMessagesOptions) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const channelRef = useRef<Channel | null>(null);
 
-  // Generate dynamic mock messages based on trip data
-  const generateMockMessages = (tourId: string): Message[] => {
-    const tripData = proTripMockData[tourId];
-    if (!tripData) return [];
+  const tripId = options?.tripId ?? '';
+  const userId = options?.userId;
+  const userName = options?.userName;
+  const userAvatar = options?.userAvatar;
+  const streamToken = options?.streamToken;
 
-    const participants = tripData.participants;
-    const baseMessages: Message[] = [
-      {
-        id: '1',
-        content: `Looking forward to ${tripData.title}! This is going to be amazing.`,
-        senderId: 'user-1',
-        senderName: participants[0]?.name || 'Team Lead',
-        senderAvatar: participants[0]?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop&crop=face',
-        timestamp: '2024-01-15T10:30:00Z',
-        isRead: false,
-        tourId: tourId
-      },
-      {
-        id: '2',
-        content: `Just confirmed all arrangements for ${tripData.location}. Everything looks great!`,
-        senderId: 'user-2',
-        senderName: participants[1]?.name || 'Coordinator',
-        senderAvatar: participants[1]?.avatar || 'https://images.unsplash.com/photo-1494790108755-2616b612b47c?w=40&h=40&fit=crop&crop=face',
-        timestamp: '2024-01-15T11:15:00Z',
-        isRead: false,
-        tourId: tourId
-      },
-      {
-        id: '3',
-        content: `Team check-in: Is everyone ready for ${tripData.dateRange}?`,
-        senderId: 'user-3',
-        senderName: participants[2]?.name || 'Manager',
-        senderAvatar: participants[2]?.avatar || 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=40&h=40&fit=crop&crop=face',
-        timestamp: '2024-01-15T14:22:00Z',
-        isRead: false,
-        tourId: tourId
+  useEffect(() => {
+    if (!tripId || !userId || !streamToken) return;
+
+    let cancelled = false;
+
+    async function init() {
+      setLoading(true);
+      try {
+        await connectStreamUser(
+          userId!,
+          userName ?? userId!,
+          userAvatar,
+          streamToken!
+        );
+
+        const channel = getTripChannel(tripId);
+        channelRef.current = channel;
+
+        const state = await channel.watch();
+        if (!cancelled) {
+          setMessages((state.messages ?? []).map((m) => toMessage(m, tripId)));
+        }
+
+        channel.on('message.new', (event) => {
+          if (!cancelled && event.message) {
+            setMessages((prev) => [...prev, toMessage(event.message!, tripId)]);
+          }
+        });
+      } catch (err) {
+        if (!cancelled) setError(String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    ];
+    }
 
-    return baseMessages;
-  };
+    init();
 
-  const getMessagesForTour = (tourId: string): Message[] => {
-    return generateMockMessages(tourId);
-  };
-
-  const getMessagesForTrip = (tripId: string): Message[] => {
-    return messages.filter(msg => msg.tripId === tripId);
-  };
-
-  const addMessage = (content: string, tripId?: string, tourId?: string) => {
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      content,
-      senderId: 'current-user',
-      senderName: 'You',
-      senderAvatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop&crop=face',
-      timestamp: new Date().toISOString(),
-      isRead: true,
-      tripId,
-      tourId
+    return () => {
+      cancelled = true;
+      channelRef.current?.stopWatching();
+      channelRef.current = null;
+      disconnectStreamUser();
     };
+  }, [tripId, userId, userName, userAvatar, streamToken]);
 
-    setMessages(prev => [...prev, newMessage]);
-  };
+  const addMessage = useCallback(
+    async (content: string, _tripId?: string, _tourId?: string) => {
+      if (channelRef.current) {
+        try {
+          await channelRef.current.sendMessage({ text: content });
+        } catch (err) {
+          setError(String(err));
+        }
+      }
+    },
+    []
+  );
 
-  const searchMessages = (query: string) => {
+  const getMessagesForTrip = useCallback(
+    (id: string) => messages.filter((m) => m.tripId === id),
+    [messages]
+  );
+
+  // getMessagesForTour is kept for callers that haven't migrated yet;
+  // returns empty since all history now lives in GetStream.
+  const getMessagesForTour = useCallback((_tourId: string): Message[] => [], []);
+
+  const searchMessages = useCallback((query: string) => {
     setSearchQuery(query);
-  };
+  }, []);
 
-  const markAsRead = (messageId: string) => {
-    setMessages(prev => 
-      prev.map(msg => 
-        msg.id === messageId ? { ...msg, isRead: true } : msg
-      )
-    );
-  };
+  const markAsRead = useCallback((_messageId: string) => {}, []);
 
-  const getTotalUnreadCount = (): number => {
-    return messages.filter(msg => !msg.isRead).length;
-  };
+  const getTotalUnreadCount = useCallback((): number => 0, []);
 
-  const getTripUnreadCount = (tripId: string): number => {
-    return messages.filter(msg => msg.tripId === tripId && !msg.isRead).length;
-  };
+  const getTripUnreadCount = useCallback((_tripId: string): number => 0, []);
 
   return {
     messages,
     searchQuery,
+    loading,
+    error,
     getMessagesForTour,
     getMessagesForTrip,
     addMessage,
     searchMessages,
     markAsRead,
     getTotalUnreadCount,
-    getTripUnreadCount
+    getTripUnreadCount,
   };
 };
